@@ -24,5 +24,6 @@ export enum ActionType {
   ANALYZE = 'ANALYZE',
   INTEGRATE = 'INTEGRATE',
   GENERATE = 'GENERATE',
+  HISTORY = 'HISTORY',
   RESET = 'RESET'
 }

@@ -70,6 +70,11 @@ const App: React.FC = () => {
         setTimeout(() => addLog('Project blueprint ready.', 'success'), 1200);
         break;
       
+      case ActionType.HISTORY:
+        addLog('Fetching version history...', 'info');
+        setTimeout(() => addLog('History updated: v1.0.2 is the latest stable.', 'success'), 900);
+        break;
+
       case ActionType.RESET:
         if (confirm('Are you sure you want to clear all repositories and logs?')) {
           setRepos([]);
