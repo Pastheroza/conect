@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActionType } from '../types';
-import { Zap, Search, History, Lock, Lightbulb } from 'lucide-react';
+import { Zap, Search, RotateCcw, Lock, Lightbulb } from 'lucide-react';
 
 interface ActionPanelProps {
   onAction: (type: ActionType) => void;
@@ -47,12 +47,11 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady }) =
         </button>
 
         <button
-          onClick={() => onAction(ActionType.HISTORY)}
-          disabled={!isReady}
-          className="flex flex-col items-center justify-center p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all gap-2"
+          onClick={() => onAction(ActionType.RESET)}
+          className="flex flex-col items-center justify-center p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-all gap-2 group"
         >
-          <History className="w-5 h-5 text-slate-600" />
-          <span className="text-sm font-medium text-gray-700">History & Reset</span>
+          <RotateCcw className="w-5 h-5 text-gray-500 group-hover:text-red-500" />
+          <span className="text-sm font-medium text-gray-700 group-hover:text-red-600">Reset Project</span>
         </button>
       </div>
     </div>
