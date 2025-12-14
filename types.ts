@@ -29,7 +29,6 @@ export interface LogEntry {
 export enum ActionType {
   ANALYZE = 'ANALYZE',
   INTEGRATE = 'INTEGRATE',
-  GENERATE = 'GENERATE',
-  HISTORY = 'HISTORY',
-  RESET = 'RESET'
+  SUGGESTIONS = 'SUGGESTIONS',
+  HISTORY = 'HISTORY'
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActionType } from '../types';
-import { Zap, Search, Box, RotateCcw, History, Lock } from 'lucide-react';
+import { Zap, Search, History, Lock, Lightbulb } from 'lucide-react';
 
 interface ActionPanelProps {
   onAction: (type: ActionType) => void;
@@ -17,7 +17,8 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady }) =
         </div>
       )}
       
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* Grid updated for 4 items: 2x2 on mobile, 4x1 on desktop */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <button
           onClick={() => onAction(ActionType.ANALYZE)}
           disabled={!isReady}
@@ -37,12 +38,12 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady }) =
         </button>
 
         <button
-          onClick={() => onAction(ActionType.GENERATE)}
+          onClick={() => onAction(ActionType.SUGGESTIONS)}
           disabled={!isReady}
           className="flex flex-col items-center justify-center p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all gap-2"
         >
-          <Box className="w-5 h-5 text-emerald-600" />
-          <span className="text-sm font-medium text-gray-700">Generate</span>
+          <Lightbulb className="w-5 h-5 text-indigo-600" />
+          <span className="text-sm font-medium text-gray-700">Suggestions</span>
         </button>
 
         <button
@@ -50,16 +51,8 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady }) =
           disabled={!isReady}
           className="flex flex-col items-center justify-center p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all gap-2"
         >
-          <History className="w-5 h-5 text-purple-600" />
-          <span className="text-sm font-medium text-gray-700">History</span>
-        </button>
-
-        <button
-          onClick={() => onAction(ActionType.RESET)}
-          className="flex flex-col items-center justify-center p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-red-200 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all gap-2 group md:col-span-1 col-span-2 lg:col-span-1"
-        >
-          <RotateCcw className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
-          <span className="text-sm font-medium text-gray-700 group-hover:text-red-600">Reset</span>
+          <History className="w-5 h-5 text-slate-600" />
+          <span className="text-sm font-medium text-gray-700">History & Reset</span>
         </button>
       </div>
     </div>

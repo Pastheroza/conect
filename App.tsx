@@ -70,25 +70,15 @@ const App: React.FC = () => {
         addLog('Integration sequence initiated between Frontend and Backend...', 'info');
         setTimeout(() => addLog('Waiting for backend logic...', 'warning'), 800);
         break;
-      
-      case ActionType.GENERATE:
-        addLog('Generating unified project structure...', 'info');
-        setTimeout(() => addLog('Project blueprint ready.', 'success'), 1200);
+
+      case ActionType.SUGGESTIONS:
+        addLog('Scanning codebases for potential improvements...', 'info');
+        setTimeout(() => addLog('Found 3 architecture suggestions and 1 security patch.', 'success'), 1200);
         break;
       
       case ActionType.HISTORY:
-        addLog('Fetching version history for all modules...', 'info');
-        setTimeout(() => addLog('History updated: v1.0.2 is the latest stable.', 'success'), 900);
-        break;
-
-      case ActionType.RESET:
-        if (confirm('Are you sure you want to clear all repositories and logs?')) {
-          setRepos([]);
-          setLogs([]);
-          // We don't log this since we just cleared the logs!
-          // But let's add an initial log to show state.
-          setTimeout(() => addLog('System reset.', 'info'), 100);
-        }
+        addLog('Accessing version control history...', 'info');
+        setTimeout(() => addLog('History loaded. Use CLI to reset to previous Commit ID: a1b2c3d.', 'info'), 800);
         break;
     }
   };
