@@ -13,7 +13,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady }) =
       {!isReady && (
         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800 text-xs font-medium">
           <Lock className="w-3 h-3" />
-          <span>Requirement: Add at least 1 Frontend and 1 Backend repository to enable actions.</span>
+          <span>Requirement: Add at least 2 repositories to enable actions.</span>
         </div>
       )}
       
