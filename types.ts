@@ -1,9 +1,15 @@
 /**
+ * Defines the role of the repository in the project.
+ */
+export type RepoRole = 'frontend' | 'backend';
+
+/**
  * Represents a single Git repository added by the user.
  */
 export interface Repository {
   id: string;
   url: string;
+  role: RepoRole;
   addedAt: Date;
 }
 
