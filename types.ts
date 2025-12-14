@@ -5,6 +5,7 @@ export interface Repository {
   id: string;
   url: string;
   addedAt: Date;
+  summary?: any; // Optional summary from analysis
 }
 
 /**
@@ -18,11 +19,23 @@ export interface LogEntry {
 }
 
 /**
+ * Represents the authenticated user.
+ */
+export interface User {
+  username: string;
+  name: string;
+  avatarUrl: string;
+}
+
+/**
  * Available action types for the action buttons.
  */
 export enum ActionType {
+  RUN_ALL = 'RUN_ALL',
   ANALYZE = 'ANALYZE',
+  MATCH = 'MATCH',
+  GENERATE = 'GENERATE',
   INTEGRATE = 'INTEGRATE',
-  SUGGESTIONS = 'SUGGESTIONS',
+  VALIDATE = 'VALIDATE',
   RESET = 'RESET'
 }

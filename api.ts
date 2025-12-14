@@ -52,7 +52,7 @@ export const api = {
   },
 
   /**
-   * Run Analysis
+   * Step 1: Run Analysis
    */
   analyze: async () => {
     const res = await fetch(`${BASE_URL}/api/analyze`, {
@@ -62,7 +62,27 @@ export const api = {
   },
 
   /**
-   * Run Integration
+   * Step 2: Match Interfaces
+   */
+  match: async () => {
+    const res = await fetch(`${BASE_URL}/api/match`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  /**
+   * Step 3: Generate Glue Code
+   */
+  generate: async () => {
+    const res = await fetch(`${BASE_URL}/api/generate`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  /**
+   * Step 4: Run Integration
    */
   integrate: async () => {
     const res = await fetch(`${BASE_URL}/api/integrate`, {
@@ -72,13 +92,30 @@ export const api = {
   },
 
   /**
-   * Validate and get suggestions
+   * Step 5: Validate and get suggestions
    */
   validate: async () => {
     const res = await fetch(`${BASE_URL}/api/validate`, {
       method: 'POST',
     });
     return handleResponse(res);
+  },
+
+  /**
+   * Run Full Pipeline (JSON)
+   */
+  runAll: async () => {
+    const res = await fetch(`${BASE_URL}/api/run-all`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  /**
+   * Get SSE Endpoint URL for Run All Stream
+   */
+  getRunAllStreamUrl: () => {
+    return `${BASE_URL}/api/run-all/stream`;
   },
 
   /**
