@@ -137,6 +137,13 @@ export async function createPR(
 ): Promise<PRResult> {
   const [forkOwner] = forkFullName.split('/');
 
+  // Get default branch of original repo
+  const repoRes = await fetch(`https://api.github.com/repos/${originalOwner}/${originalRepo}`, {
+    headers: { Authorization: `token ${GITHUB_TOKEN}` },
+  });
+  const repoData = await repoRes.json();
+  const baseBranch = repoData.default_branch || 'main';
+
   const response = await fetch(`https://api.github.com/repos/${originalOwner}/${originalRepo}/pulls`, {
     method: 'POST',
     headers: {
@@ -147,33 +154,13 @@ export async function createPR(
       title,
       body,
       head: `${forkOwner}:${branch}`,
-      base: 'main',
+      base: baseBranch,
     }),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    // Try with 'master' if 'main' fails
-    if (error.message?.includes('base')) {
-      const retryRes = await fetch(`https://api.github.com/repos/${originalOwner}/${originalRepo}/pulls`, {
-        method: 'POST',
-        headers: {
-          Authorization: `token ${GITHUB_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title,
-          body,
-          head: `${forkOwner}:${branch}`,
-          base: 'master',
-        }),
-      });
-      if (retryRes.ok) {
-        const pr = await retryRes.json();
-        return { prUrl: pr.html_url, prNumber: pr.number };
-      }
-    }
-    throw new Error(`PR creation failed: ${error.message}`);
+    throw new Error(`PR creation failed: ${error.message || JSON.stringify(error.errors)}`);
   }
 
   const pr = await response.json();
