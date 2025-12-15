@@ -43,28 +43,40 @@ export async function analyzeRepo(repoPath: string, url: string): Promise<RepoSu
   // Detect language and framework
   const files = await readdir(repoPath);
   
-  if (files.includes('package.json')) {
-    summary.language = 'javascript';
-    const pkg = JSON.parse(await readFile(join(repoPath, 'package.json'), 'utf-8'));
-    summary.dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
+  // Check for monorepo structure (backend/, frontend/ folders)
+  const checkPaths = [repoPath];
+  if (files.includes('backend')) checkPaths.push(join(repoPath, 'backend'));
+  if (files.includes('frontend')) checkPaths.push(join(repoPath, 'frontend'));
+  
+  for (const checkPath of checkPaths) {
+    if (summary.framework) break;
+    const checkFiles = checkPath === repoPath ? files : await readdir(checkPath);
     
-    if (summary.dependencies['react']) summary.framework = 'react';
-    else if (summary.dependencies['next']) summary.framework = 'nextjs';
-    else if (summary.dependencies['express']) summary.framework = 'express';
-    else if (summary.dependencies['fastify']) summary.framework = 'fastify';
-  } else if (files.includes('requirements.txt') || files.includes('pyproject.toml')) {
-    summary.language = 'python';
-    if (files.includes('requirements.txt')) {
-      const reqs = await readFile(join(repoPath, 'requirements.txt'), 'utf-8');
-      if (reqs.includes('fastapi')) summary.framework = 'fastapi';
-      else if (reqs.includes('flask')) summary.framework = 'flask';
-      else if (reqs.includes('django')) summary.framework = 'django';
+    if (checkFiles.includes('package.json')) {
+      summary.language = 'javascript';
+      const pkg = JSON.parse(await readFile(join(checkPath, 'package.json'), 'utf-8'));
+      summary.dependencies = { ...summary.dependencies, ...pkg.dependencies, ...pkg.devDependencies };
+      
+      if (pkg.dependencies?.['react'] || pkg.devDependencies?.['react']) summary.framework = 'react';
+      else if (pkg.dependencies?.['next'] || pkg.devDependencies?.['next']) summary.framework = 'nextjs';
+      else if (pkg.dependencies?.['express']) summary.framework = 'express';
+      else if (pkg.dependencies?.['fastify']) summary.framework = 'fastify';
     }
-    if (!summary.framework && files.includes('pyproject.toml')) {
-      const pyproj = await readFile(join(repoPath, 'pyproject.toml'), 'utf-8');
-      if (pyproj.includes('fastapi')) summary.framework = 'fastapi';
-      else if (pyproj.includes('flask')) summary.framework = 'flask';
-      else if (pyproj.includes('django')) summary.framework = 'django';
+    
+    if (!summary.framework && (checkFiles.includes('requirements.txt') || checkFiles.includes('pyproject.toml'))) {
+      summary.language = 'python';
+      if (checkFiles.includes('requirements.txt')) {
+        const reqs = await readFile(join(checkPath, 'requirements.txt'), 'utf-8');
+        if (reqs.includes('fastapi')) summary.framework = 'fastapi';
+        else if (reqs.includes('flask')) summary.framework = 'flask';
+        else if (reqs.includes('django')) summary.framework = 'django';
+      }
+      if (!summary.framework && checkFiles.includes('pyproject.toml')) {
+        const pyproj = await readFile(join(checkPath, 'pyproject.toml'), 'utf-8');
+        if (pyproj.includes('fastapi')) summary.framework = 'fastapi';
+        else if (pyproj.includes('flask')) summary.framework = 'flask';
+        else if (pyproj.includes('django')) summary.framework = 'django';
+      }
     }
   }
 
