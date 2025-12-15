@@ -64,6 +64,20 @@ export const swaggerSpec = {
         },
       },
     },
+    '/api/orgs': {
+      post: {
+        summary: 'Add all public repos from a GitHub organization',
+        tags: ['Repositories'],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['org'], properties: { org: { type: 'string', example: 'facebook' } } } } },
+        },
+        responses: {
+          200: { description: 'Repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/AddOrgResponse' } } } },
+          400: { description: 'Org not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
     '/api/repos/{id}': {
       delete: {
         summary: 'Delete a repository',
@@ -212,6 +226,7 @@ export const swaggerSpec = {
       Success: { type: 'object', properties: { success: { type: 'boolean' } } },
       AddRepoRequest: { type: 'object', required: ['url'], properties: { url: { type: 'string', example: 'https://github.com/user/repo' } } },
       AddRepoResponse: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' }, addedAt: { type: 'string' } } },
+      AddOrgResponse: { type: 'object', properties: { org: { type: 'string' }, added: { type: 'array', items: { $ref: '#/components/schemas/AddRepoResponse' } }, total: { type: 'number' } } },
       RepoList: { type: 'object', properties: { repos: { type: 'array', items: { $ref: '#/components/schemas/Repo' } } } },
       Repo: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' }, addedAt: { type: 'string' }, summary: { $ref: '#/components/schemas/RepoSummary' } } },
       RepoSummary: {
