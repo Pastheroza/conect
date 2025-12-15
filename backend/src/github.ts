@@ -4,6 +4,7 @@ const GITHUB_ORG = process.env.GITHUB_ORG || 'repofuse';
 interface ForkResult {
   forkUrl: string;
   forkFullName: string;
+  synced?: boolean;
 }
 
 interface PRResult {
@@ -15,6 +16,19 @@ export function parseRepoUrl(url: string): { owner: string; repo: string } | nul
   const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
   if (!match) return null;
   return { owner: match[1], repo: match[2].replace('.git', '') };
+}
+
+// Sync fork with upstream
+async function syncFork(forkFullName: string, branch: string): Promise<boolean> {
+  const response = await fetch(`https://api.github.com/repos/${forkFullName}/merge-upstream`, {
+    method: 'POST',
+    headers: {
+      Authorization: `token ${GITHUB_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ branch }),
+  });
+  return response.ok;
 }
 
 export async function forkRepo(repoUrl: string): Promise<ForkResult> {
@@ -30,9 +44,16 @@ export async function forkRepo(repoUrl: string): Promise<ForkResult> {
   });
 
   if (existingFork.ok) {
+    const forkData = await existingFork.json();
+    const defaultBranch = forkData.default_branch || 'main';
+    
+    // Sync fork with upstream
+    const synced = await syncFork(`${GITHUB_ORG}/${forkName}`, defaultBranch);
+    
     return {
       forkUrl: `https://github.com/${GITHUB_ORG}/${forkName}`,
       forkFullName: `${GITHUB_ORG}/${forkName}`,
+      synced,
     };
   }
 
