@@ -128,6 +128,9 @@ curl -X POST https://conect.api.hurated.com/api/run-all | jq
 | `/api/reset` | POST | Clear all data |
 | `/api/history` | GET | Git commit history |
 | `/api/apply` | POST | Fork repos + create PRs |
+| `/api/jobs` | POST | Start async job |
+| `/api/jobs` | GET | List jobs |
+| `/api/jobs/:id` | GET | Get job status |
 
 ### Fork Organization
 
