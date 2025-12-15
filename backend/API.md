@@ -2,6 +2,18 @@
 
 Base URL: `https://conect.api.hurated.com`
 
+## Typical Workflow
+
+```
+1. POST /api/repos     → Add repositories (one or more)
+2. POST /api/run-all   → Run full pipeline (or GET /api/run-all/stream for real-time logs)
+3. POST /api/apply     → Create PRs with generated code (optional)
+```
+
+## CORS
+
+API supports CORS from any origin. No special headers required.
+
 ## Quick Reference
 
 | Method | Endpoint | Description |
