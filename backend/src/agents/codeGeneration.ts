@@ -7,7 +7,6 @@ export interface GeneratedCode {
   corsConfig?: string;
   missingEndpoints?: string;
   sharedTypes?: string;
-  adapters?: { filename: string; code: string }[];
 }
 
 export async function generateCode(
@@ -40,39 +39,28 @@ async function generateCodeWithAI(
       language: r.language,
       apiRoutes: r.apiRoutes,
       apiCalls: r.apiCalls,
-      dataModels: r.dataModels,
     })), null, 2),
     matchResults: JSON.stringify({
-      matched: matchResult.matched,
       missingInBackend: matchResult.missingInBackend,
-      unusedInBackend: matchResult.unusedInBackend,
-      integrationStrategy: matchResult.integrationStrategy,
       mismatches: matchResult.mismatches,
-      sharedDataModels: matchResult.sharedDataModels,
     }, null, 2),
   });
 
   interface AIGeneratedCode {
-    apiClient?: { filename: string; code: string };
-    corsConfig?: { filename: string; code: string };
-    adapters?: { filename: string; code: string }[];
-    missingEndpoints?: { filename: string; code: string }[];
-    sharedTypes?: { filename: string; code: string };
+    apiClient?: string;
+    corsConfig?: string;
+    missingEndpoints?: string;
+    sharedTypes?: string;
   }
 
-  const aiResult = await callGroqJson<AIGeneratedCode>(prompt, 8192);
+  const aiResult = await callGroqJson<AIGeneratedCode>(prompt, 4096);
 
-  const result: GeneratedCode = {};
-  
-  if (aiResult.apiClient?.code) result.apiClient = aiResult.apiClient.code;
-  if (aiResult.corsConfig?.code) result.corsConfig = aiResult.corsConfig.code;
-  if (aiResult.sharedTypes?.code) result.sharedTypes = aiResult.sharedTypes.code;
-  if (aiResult.adapters) result.adapters = aiResult.adapters;
-  if (aiResult.missingEndpoints?.length) {
-    result.missingEndpoints = aiResult.missingEndpoints.map(e => e.code).join('\n\n');
-  }
-
-  return result;
+  return {
+    apiClient: aiResult.apiClient,
+    corsConfig: aiResult.corsConfig,
+    missingEndpoints: aiResult.missingEndpoints,
+    sharedTypes: aiResult.sharedTypes,
+  };
 }
 
 function generateBasicCode(repos: RepoSummary[], matchResult: MatchResult): GeneratedCode {

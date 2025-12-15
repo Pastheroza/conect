@@ -9,44 +9,19 @@ Generate integration code to connect these repositories.
 {{matchResults}}
 
 ## Task:
-Generate the actual code needed to integrate these repositories. Return a JSON object:
+Generate code to integrate these repositories. Return a JSON object with code as simple strings (use \n for newlines):
 
 ```json
 {
-  "apiClient": {
-    "filename": "api-client.ts",
-    "language": "typescript",
-    "code": "// Full TypeScript API client code that the frontend can use\n// Include all endpoints, types, error handling\n..."
-  },
-  "corsConfig": {
-    "filename": "cors-config.js",
-    "language": "javascript",
-    "code": "// CORS middleware configuration\n..."
-  },
-  "adapters": [
-    {
-      "filename": "user-adapter.ts",
-      "purpose": "Transforms frontend User to backend User format",
-      "code": "// Adapter code\n..."
-    }
-  ],
-  "missingEndpoints": [
-    {
-      "filename": "comments-routes.py",
-      "language": "python",
-      "framework": "fastapi",
-      "code": "# Full implementation of missing endpoint\n..."
-    }
-  ],
-  "sharedTypes": {
-    "filename": "shared-types.ts",
-    "code": "// TypeScript interfaces for all shared data models\n..."
-  },
-  "envExample": {
-    "filename": ".env.example",
-    "code": "# Required environment variables\n..."
-  }
+  "apiClient": "const API_URL = process.env.API_URL;\n\nexport async function getJobs() {\n  return fetch(`${API_URL}/api/jobs`).then(r => r.json());\n}",
+  "corsConfig": "import cors from 'cors';\napp.use(cors({ origin: process.env.FRONTEND_URL }));",
+  "missingEndpoints": "app.get('/api/jobs', (req, res) => res.json([]));\napp.get('/api/jobs/:id', (req, res) => res.json({}));",
+  "sharedTypes": "export interface Job { id: string; title: string; }\nexport interface Post { id: string; content: string; }"
 }
 ```
 
-Generate REAL, WORKING code - not placeholders. Return ONLY valid JSON.
+Rules:
+- Use \n for newlines in code strings
+- Escape quotes properly
+- Keep code concise but functional
+- Return ONLY valid JSON, no markdown
