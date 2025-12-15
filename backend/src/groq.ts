@@ -77,6 +77,3 @@ export async function callGroqJson<T>(prompt: string, maxTokens: number = 4096):
     }
   }
 }
-    throw new Error('Invalid JSON response from Groq');
-  }
-}
