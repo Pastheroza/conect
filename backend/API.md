@@ -117,10 +117,17 @@ Content-Type: application/json
 }
 ```
 
-**Error** `400 Bad Request`
+**Error** `400 Bad Request` - Missing URL
 ```json
 {
   "error": "url required"
+}
+```
+
+**Error** `400 Bad Request` - Repository not found
+```json
+{
+  "error": "Repository not found or not accessible: https://github.com/user/repo"
 }
 ```
 
