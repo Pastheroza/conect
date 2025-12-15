@@ -156,16 +156,14 @@ export async function createPR(
   title: string,
   body: string
 ): Promise<PRResult> {
-  const [forkOwner] = forkFullName.split('/');
-
-  // Get default branch of original repo
-  const repoRes = await fetch(`https://api.github.com/repos/${originalOwner}/${originalRepo}`, {
+  // Create PR within the fork (not to original repo)
+  const repoRes = await fetch(`https://api.github.com/repos/${forkFullName}`, {
     headers: { Authorization: `token ${GITHUB_TOKEN}` },
   });
   const repoData = await repoRes.json();
   const baseBranch = repoData.default_branch || 'main';
 
-  const response = await fetch(`https://api.github.com/repos/${originalOwner}/${originalRepo}/pulls`, {
+  const response = await fetch(`https://api.github.com/repos/${forkFullName}/pulls`, {
     method: 'POST',
     headers: {
       Authorization: `token ${GITHUB_TOKEN}`,
@@ -174,7 +172,7 @@ export async function createPR(
     body: JSON.stringify({
       title,
       body,
-      head: `${forkOwner}:${branch}`,
+      head: branch,
       base: baseBranch,
     }),
   });
