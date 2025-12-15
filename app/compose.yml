@@ -1,0 +1,10 @@
+services:
+  conect-app:
+    build: .
+    ports:
+      - "${EXTERNAL_PORT}:4173"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    restart: unless-stopped

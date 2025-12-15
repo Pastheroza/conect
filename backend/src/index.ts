@@ -1,0 +1,625 @@
+import { log } from './logger.js';
+import express, { Response } from 'express';
+import cors from 'cors';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { cloneRepo, analyzeRepo, RepoSummary } from './agents/repoAnalysis.js';
+import { matchInterfaces } from './agents/interfaceMatching.js';
+import { generateCode } from './agents/codeGeneration.js';
+import { generateIntegration } from './agents/integration.js';
+import { validateIntegration } from './agents/validation.js';
+import { calculateMetrics } from './agents/metrics.js';
+import { swaggerSpec } from './swagger.js';
+import { forkRepo, createBranch, commitFile, createPR, parseRepoUrl } from './github.js';
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
+
+// Request logging
+app.use((req, res, next) => {
+  log(` ${req.method} ${req.path}`);
+  next();
+});
+
+// In-memory storage
+interface StoredRepo {
+  id: string;
+  url: string;
+  addedAt: string;
+  summary?: RepoSummary;
+}
+const repos: Map<string, StoredRepo> = new Map();
+
+// Job storage for async API
+interface Job {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  result?: any;
+  error?: string;
+  logs: { message: string; type: string; timestamp: string }[];
+}
+const jobs: Map<string, Job> = new Map();
+
+// SSE helper
+function sendSSE(res: Response, message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') {
+  const data = JSON.stringify({ message, type, timestamp: new Date().toISOString() });
+  res.write(`data: ${data}\n\n`);
+}
+
+// Swagger JSON
+app.get('/api/docs/swagger.json', (req, res) => {
+  res.json(swaggerSpec);
+});
+
+// Swagger UI
+app.get('/api/docs', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html><head>
+  <title>conect API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head><body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>SwaggerUIBundle({ url: '/api/docs/swagger.json', dom_id: '#swagger-ui' });</script>
+</body></html>`);
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// List repos
+app.get('/api/repos', (req, res) => {
+  res.json({ repos: Array.from(repos.values()) });
+});
+
+// Add repo
+app.post('/api/repos', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'url required' });
+  
+  // Validate GitHub repo exists
+  const parsed = parseRepoUrl(url);
+  if (parsed) {
+    const check = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`);
+    if (!check.ok) {
+      return res.status(400).json({ error: `Repository not found or not accessible: ${url}` });
+    }
+  }
+  
+  const id = Buffer.from(url).toString('base64url');
+  const addedAt = new Date().toISOString();
+  repos.set(id, { id, url, addedAt });
+  res.json({ id, url, addedAt });
+});
+
+// Add all public repos from a GitHub organization
+app.post('/api/orgs', async (req, res) => {
+  let { org, includeForks } = req.body;
+  if (!org) return res.status(400).json({ error: 'org required' });
+
+  // Parse org name from URL if provided (e.g., https://github.com/orgs/facebook or https://github.com/facebook)
+  const urlMatch = org.match(/github\.com\/(?:orgs\/)?([^\/\s]+)/);
+  if (urlMatch) org = urlMatch[1];
+
+  // Fetch all public repos from org
+  const response = await fetch(`https://api.github.com/orgs/${org}/repos?type=public&per_page=100`);
+  if (!response.ok) {
+    return res.status(400).json({ error: `Organization not found: ${org}` });
+  }
+
+  const orgRepos = await response.json();
+  const added: { id: string; url: string; addedAt: string }[] = [];
+
+  for (const repo of orgRepos) {
+    if (repo.fork && !includeForks) continue; // Skip forks unless includeForks is true
+    const url = repo.html_url;
+    const id = Buffer.from(url).toString('base64url');
+    if (!repos.has(id)) {
+      const addedAt = new Date().toISOString();
+      repos.set(id, { id, url, addedAt });
+      added.push({ id, url, addedAt });
+    }
+  }
+
+  res.json({ org, added, total: added.length });
+});
+
+// Remove repo
+app.delete('/api/repos/:id', (req, res) => {
+  const { id } = req.params;
+  if (repos.delete(id)) {
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'not found' });
+  }
+});
+
+// Analyze all repos
+app.post('/api/analyze', async (req, res) => {
+  const results: RepoSummary[] = [];
+  
+  for (const [id, repo] of repos) {
+    const tempDir = await mkdtemp(join(tmpdir(), 'conect-'));
+    try {
+      await cloneRepo(repo.url, tempDir);
+      const summary = await analyzeRepo(tempDir, repo.url);
+      repo.summary = summary;
+      results.push(summary);
+    } catch (err: any) {
+      results.push({ url: repo.url, error: err.message } as any);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+  
+  res.json({ results });
+});
+
+// Match interfaces between frontend and backend
+app.post('/api/match', async (req, res) => {
+  const summaries = Array.from(repos.values())
+    .map(r => r.summary)
+    .filter((s): s is RepoSummary => !!s);
+  
+  if (summaries.length === 0) {
+    return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
+  }
+  
+  const result = await matchInterfaces(summaries);
+  res.json(result);
+});
+
+// Generate code to fix mismatches
+app.post('/api/generate', async (req, res) => {
+  const summaries = Array.from(repos.values())
+    .map(r => r.summary)
+    .filter((s): s is RepoSummary => !!s);
+  
+  if (summaries.length === 0) {
+    return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
+  }
+  
+  const matchResult = await matchInterfaces(summaries);
+  const generated = await generateCode(summaries, matchResult);
+  res.json(generated);
+});
+
+// Generate integration config (docker-compose, env, scripts)
+app.post('/api/integrate', async (req, res) => {
+  const summaries = Array.from(repos.values())
+    .map(r => r.summary)
+    .filter((s): s is RepoSummary => !!s);
+  
+  if (summaries.length === 0) {
+    return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
+  }
+  
+  const result = await generateIntegration(summaries);
+  res.json(result);
+});
+
+// Validate integration and generate report
+app.post('/api/validate', async (req, res) => {
+  const summaries = Array.from(repos.values())
+    .map(r => r.summary)
+    .filter((s): s is RepoSummary => !!s);
+  
+  if (summaries.length === 0) {
+    return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
+  }
+  
+  const result = await validateIntegration(summaries, '/tmp');
+  res.json(result);
+});
+
+// Run full pipeline with SSE streaming
+app.get('/api/run-all/stream', async (req, res) => {
+  const repoList = Array.from(repos.values());
+  if (repoList.length === 0) {
+    res.status(400).json({ error: 'No repos added. Add repos first.' });
+    return;
+  }
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const startTime = Date.now();
+
+  try {
+    // Step 1: Analyze
+    sendSSE(res, 'Connecting to repositories...', 'info');
+    
+    for (const repo of repoList) {
+      const tempDir = await mkdtemp(join(tmpdir(), 'conect-'));
+      try {
+        sendSSE(res, `Cloning ${repo.url}...`, 'info');
+        await cloneRepo(repo.url, tempDir);
+        
+        sendSSE(res, `Scanning package.json and dependencies...`, 'info');
+        repo.summary = await analyzeRepo(tempDir, repo.url);
+        
+        const framework = repo.summary.framework || 'unknown';
+        sendSSE(res, `Detected ${framework} framework in ${repo.url.split('/').pop()}`, 'success');
+      } catch (err: any) {
+        sendSSE(res, `Failed to analyze ${repo.url}: ${err.message}`, 'error');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    }
+
+    const summaries = repoList.map(r => r.summary).filter((s): s is RepoSummary => !!s);
+    sendSSE(res, `Analysis complete. ${summaries.length} repositories scanned.`, 'success');
+
+    // Step 2: Match
+    sendSSE(res, 'Matching frontend API calls to backend routes...', 'info');
+    const matchResult = await matchInterfaces(summaries);
+    
+    if (matchResult.missingInBackend.length > 0) {
+      sendSSE(res, `Warning: ${matchResult.missingInBackend.length} API calls have no matching backend endpoint`, 'warning');
+    }
+    if (matchResult.unusedInBackend.length > 0) {
+      sendSSE(res, `Found ${matchResult.unusedInBackend.length} unused backend endpoints`, 'info');
+    }
+    sendSSE(res, 'Interface matching complete.', 'success');
+
+    // Step 3: Generate
+    sendSSE(res, 'Generating API client for frontend...', 'info');
+    sendSSE(res, 'Configuring CORS policies...', 'info');
+    const generated = await generateCode(summaries, matchResult);
+    sendSSE(res, `Generated ${Object.keys(generated).length} code files.`, 'success');
+
+    // Step 4: Integrate
+    sendSSE(res, 'Generating docker-compose configuration...', 'info');
+    sendSSE(res, 'Creating environment files...', 'info');
+    const integration = await generateIntegration(summaries);
+    sendSSE(res, `Integration strategy: ${integration.strategy}`, 'success');
+
+    // Step 5: Validate
+    sendSSE(res, 'Running validation checks...', 'info');
+    sendSSE(res, 'Checking dependencies and configurations...', 'info');
+    const validation = await validateIntegration(summaries, '/tmp');
+    
+    if (validation.errors.length > 0) {
+      for (const error of validation.errors) {
+        sendSSE(res, error, 'warning');
+      }
+    }
+
+    const totalDuration = Date.now() - startTime;
+    const metrics = calculateMetrics(summaries, matchResult, generated, integration, validation, totalDuration);
+
+    sendSSE(res, `Pipeline complete in ${(totalDuration / 1000).toFixed(1)}s`, 'success');
+    sendSSE(res, `Estimated time saved: ${metrics.timeSaved.total} hours ($${metrics.costSavings.totalSavings})`, 'success');
+
+    // Send final result
+    res.write(`event: complete\ndata: ${JSON.stringify({
+      analysis: summaries,
+      matching: matchResult,
+      generated,
+      integration,
+      validation,
+      metrics,
+    })}\n\n`);
+
+  } catch (err: any) {
+    sendSSE(res, `Pipeline failed: ${err.message}`, 'error');
+  }
+
+  res.end();
+});
+
+// Run full pipeline (non-streaming, for backwards compatibility)
+app.post('/api/run-all', async (req, res) => {
+  const repoList = Array.from(repos.values());
+  if (repoList.length === 0) {
+    return res.status(400).json({ error: 'No repos added. Add repos first.' });
+  }
+
+  const logs: { step: string; timestamp: string; duration?: number }[] = [];
+  const log = (step: string) => {
+    logs.push({ step, timestamp: new Date().toISOString() });
+  };
+
+  const startTime = Date.now();
+
+  // Step 1: Analyze
+  log('Starting repo analysis...');
+  for (const repo of repoList) {
+    const tempDir = await mkdtemp(join(tmpdir(), 'conect-'));
+    try {
+      await cloneRepo(repo.url, tempDir);
+      repo.summary = await analyzeRepo(tempDir, repo.url);
+      log(`Analyzed: ${repo.url}`);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  const summaries = repoList.map(r => r.summary).filter((s): s is RepoSummary => !!s);
+
+  // Step 2: Match
+  log('Matching interfaces...');
+  const matchResult = await matchInterfaces(summaries);
+  log(`Found ${matchResult.missingInBackend.length} missing endpoints`);
+
+  // Step 3: Generate
+  log('Generating code...');
+  const generated = await generateCode(summaries, matchResult);
+  log('Code generation complete');
+
+  // Step 4: Integrate
+  log('Generating integration config...');
+  const integration = await generateIntegration(summaries);
+  log(`Strategy: ${integration.strategy}`);
+
+  // Step 5: Validate
+  log('Validating integration...');
+  const validation = await validateIntegration(summaries, '/tmp');
+  log(`Validation: ${validation.report.status}`);
+
+  const totalDuration = Date.now() - startTime;
+  log(`Pipeline complete in ${totalDuration}ms`);
+
+  // Calculate economic metrics
+  const metrics = calculateMetrics(
+    summaries, matchResult, generated, integration, validation, totalDuration
+  );
+
+  res.json({
+    logs,
+    analysis: summaries,
+    matching: matchResult,
+    generated,
+    integration,
+    validation,
+    metrics,
+  });
+});
+
+// Reset all
+app.post('/api/reset', (req, res) => {
+  repos.clear();
+  jobs.clear();
+  res.json({ success: true });
+});
+
+// Start async job for full pipeline
+app.post('/api/jobs', async (req, res) => {
+  const repoList = Array.from(repos.values());
+  if (repoList.length === 0) {
+    return res.status(400).json({ error: 'No repos added. Add repos first.' });
+  }
+
+  const jobId = `job-${Date.now()}`;
+  const job: Job = {
+    id: jobId,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    logs: [],
+  };
+  jobs.set(jobId, job);
+
+  // Return immediately
+  res.json({ jobId, status: 'pending' });
+
+  // Run pipeline in background
+  job.status = 'running';
+  const log = (message: string, type: string = 'info') => {
+    job.logs.push({ message, type, timestamp: new Date().toISOString() });
+  };
+
+  try {
+    const startTime = Date.now();
+    log('Starting repo analysis...');
+
+    for (const repo of repoList) {
+      const tempDir = await mkdtemp(join(tmpdir(), 'conect-'));
+      try {
+        await cloneRepo(repo.url, tempDir);
+        repo.summary = await analyzeRepo(tempDir, repo.url);
+        log(`Analyzed: ${repo.url}`, 'success');
+      } catch (e: any) {
+        log(`Failed: ${repo.url} - ${e.message}`, 'error');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    }
+
+    const summaries = repoList.map(r => r.summary).filter((s): s is RepoSummary => !!s);
+    log('Matching interfaces...');
+    const matchResult = await matchInterfaces(summaries);
+    log('Generating code...');
+    const generated = await generateCode(summaries, matchResult);
+    log('Generating integration config...');
+    const integration = await generateIntegration(summaries);
+    log('Validating integration...');
+    const validation = await validateIntegration(summaries, '/tmp');
+
+    const totalDuration = Date.now() - startTime;
+    const metrics = calculateMetrics(summaries, matchResult, generated, integration, validation, totalDuration);
+
+    job.status = 'completed';
+    job.completedAt = new Date().toISOString();
+    job.result = { analysis: summaries, matching: matchResult, generated, integration, validation, metrics };
+    log(`Pipeline complete in ${totalDuration}ms`, 'success');
+  } catch (e: any) {
+    job.status = 'failed';
+    job.error = e.message;
+    job.completedAt = new Date().toISOString();
+  }
+});
+
+// Get job status
+app.get('/api/jobs/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  res.json(job);
+});
+
+// List all jobs
+app.get('/api/jobs', (req, res) => {
+  res.json({ jobs: Array.from(jobs.values()).map(j => ({ id: j.id, status: j.status, createdAt: j.createdAt })) });
+});
+
+// Get git history for all repos
+app.get('/api/history', async (req, res) => {
+  const repoList = Array.from(repos.values());
+  if (repoList.length === 0) {
+    return res.status(400).json({ error: 'No repos added. Add repos first.' });
+  }
+
+  const history: { repo: string; commits: { hash: string; message: string; date: string; author: string }[] }[] = [];
+
+  for (const repo of repoList) {
+    const tempDir = await mkdtemp(join(tmpdir(), 'conect-'));
+    try {
+      await cloneRepo(repo.url, tempDir);
+      const { execSync } = await import('child_process');
+      const log = execSync('git log --oneline -10 --format="%H|%s|%ai|%an"', { cwd: tempDir, encoding: 'utf-8' });
+      const commits = log.trim().split('\n').filter(Boolean).map(line => {
+        const [hash, message, date, author] = line.split('|');
+        return { hash: hash.slice(0, 7), message, date, author };
+      });
+      history.push({ repo: repo.url, commits });
+    } catch (err: any) {
+      history.push({ repo: repo.url, commits: [], error: err.message } as any);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  res.json({ history });
+});
+
+// Apply changes: fork repos, commit generated code, create PRs
+app.post('/api/apply', async (req, res) => {
+  const summaries = Array.from(repos.values())
+    .map(r => r.summary)
+    .filter((s): s is RepoSummary => !!s);
+
+  if (summaries.length === 0) {
+    return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
+  }
+
+  if (!process.env.GITHUB_TOKEN) {
+    return res.status(500).json({ error: 'GITHUB_TOKEN not configured' });
+  }
+
+  const matchResult = await matchInterfaces(summaries);
+  const generated = await generateCode(summaries, matchResult);
+  const results: { 
+    repo: string; 
+    forkUrl: string; 
+    prUrl?: string; 
+    filesAdded?: string[];
+    summary?: { framework: string | null; language: string | null; routes: number; apiCalls: number };
+    error?: string;
+  }[] = [];
+
+  const branchName = `conect-integration-${Date.now()}`;
+
+  for (const summary of summaries) {
+    const parsed = parseRepoUrl(summary.url);
+    if (!parsed) {
+      results.push({ repo: summary.url, forkUrl: '', error: 'Invalid URL' });
+      continue;
+    }
+
+    try {
+      // Fork the repo
+      const { forkUrl, forkFullName } = await forkRepo(summary.url);
+      
+      // Wait for fork to be ready
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Create branch
+      await createBranch(forkFullName, branchName);
+
+      // Determine what files to commit based on repo type
+      const isBackend = ['express', 'fastapi', 'flask'].includes(summary.framework || '');
+      const filesAdded: string[] = [];
+      
+      if (isBackend && generated.corsConfig) {
+        await commitFile(forkFullName, branchName, 'conect-cors-config.txt', generated.corsConfig, 'Add CORS configuration from conect');
+        filesAdded.push('conect-cors-config.txt');
+      }
+      if (isBackend && generated.missingEndpoints) {
+        await commitFile(forkFullName, branchName, 'conect-missing-endpoints.txt', generated.missingEndpoints, 'Add missing endpoint stubs from conect');
+        filesAdded.push('conect-missing-endpoints.txt');
+      }
+      if (!isBackend && generated.apiClient) {
+        await commitFile(forkFullName, branchName, 'conect-api-client.ts', generated.apiClient, 'Add API client from conect');
+        filesAdded.push('conect-api-client.ts');
+      }
+      if (generated.sharedTypes) {
+        await commitFile(forkFullName, branchName, 'conect-shared-types.ts', generated.sharedTypes, 'Add shared types from conect');
+        filesAdded.push('conect-shared-types.ts');
+      }
+      
+      // Always commit a summary file to ensure PR has at least one commit
+      if (filesAdded.length === 0) {
+        const summaryContent = `# conect Analysis Summary\n\nRepository: ${summary.url}\nFramework: ${summary.framework || 'unknown'}\nLanguage: ${summary.language || 'unknown'}\nRoutes found: ${summary.apiRoutes?.length || 0}\nAPI calls found: ${summary.apiCalls?.length || 0}\n\nGenerated by conect on ${new Date().toISOString()}`;
+        await commitFile(forkFullName, branchName, 'CONECT_ANALYSIS.md', summaryContent, 'Add conect analysis summary');
+        filesAdded.push('CONECT_ANALYSIS.md');
+      }
+
+      // Create PR
+      const prBody = `## conect Integration
+
+This PR was automatically generated by [conect](https://github.com/Pastheroza/conect) to help integrate this repository with other services.
+
+### Changes
+- Generated integration code based on API analysis
+- Added type definitions for shared interfaces
+
+### Repositories Analyzed
+${summaries.map(s => `- ${s.url} (${s.framework})`).join('\n')}
+
+---
+*Generated by conect - AI-powered repository integration*`;
+
+      const { prUrl } = await createPR(
+        parsed.owner,
+        parsed.repo,
+        forkFullName,
+        branchName,
+        'feat: Add conect integration code',
+        prBody
+      );
+
+      results.push({ 
+        repo: summary.url, 
+        forkUrl, 
+        prUrl,
+        filesAdded,
+        summary: {
+          framework: summary.framework,
+          language: summary.language,
+          routes: summary.apiRoutes?.length || 0,
+          apiCalls: summary.apiCalls?.length || 0,
+        }
+      });
+    } catch (err: any) {
+      results.push({ repo: summary.url, forkUrl: '', error: err.message });
+    }
+  }
+
+  res.json({ results });
+});
+
+app.listen(PORT, () => {
+  log(`Server running on port ${PORT}`);
+});

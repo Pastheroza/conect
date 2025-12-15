@@ -1,0 +1,403 @@
+export const swaggerSpec = {
+  openapi: '3.0.0',
+  info: {
+    title: 'conect API',
+    version: '1.0.0',
+    description: 'AI-powered multi-agent system for integrating multiple GitHub repositories. Forks are created in the [repofuse](https://github.com/repofuse) organization.',
+  },
+  servers: [
+    { url: 'https://conect.api.hurated.com', description: 'Production' },
+    { url: 'http://localhost:3000', description: 'Development' },
+  ],
+  paths: {
+    '/health': {
+      get: {
+        summary: 'Health check',
+        tags: ['System'],
+        responses: {
+          200: {
+            description: 'Service is healthy',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Health' } } },
+          },
+        },
+      },
+    },
+    '/api/docs': {
+      get: {
+        summary: 'Swagger UI documentation',
+        tags: ['Documentation'],
+        responses: {
+          200: { description: 'HTML page with Swagger UI', content: { 'text/html': { schema: { type: 'string' } } } },
+        },
+      },
+    },
+    '/api/docs/swagger.json': {
+      get: {
+        summary: 'OpenAPI specification',
+        tags: ['Documentation'],
+        responses: {
+          200: { description: 'OpenAPI 3.0 JSON spec', content: { 'application/json': { schema: { type: 'object' } } } },
+        },
+      },
+    },
+    '/api/repos': {
+      get: {
+        summary: 'List all repositories',
+        tags: ['Repositories'],
+        responses: {
+          200: {
+            description: 'List of repositories',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/RepoList' } } },
+          },
+        },
+      },
+      post: {
+        summary: 'Add a repository',
+        tags: ['Repositories'],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/AddRepoRequest' } } },
+        },
+        responses: {
+          200: { description: 'Repository added', content: { 'application/json': { schema: { $ref: '#/components/schemas/AddRepoResponse' } } } },
+          400: { description: 'URL required', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/orgs': {
+      post: {
+        summary: 'Add all public repos from a GitHub organization',
+        tags: ['Repositories'],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['org'], properties: { org: { type: 'string', example: 'facebook' }, includeForks: { type: 'boolean', example: false, description: 'Include forked repos (default: false)' } } } } },
+        },
+        responses: {
+          200: { description: 'Repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/AddOrgResponse' } } } },
+          400: { description: 'Org not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/repos/{id}': {
+      delete: {
+        summary: 'Delete a repository',
+        tags: ['Repositories'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Repository deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/Success' } } } },
+          404: { description: 'Not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/analyze': {
+      post: {
+        summary: 'Analyze all repositories',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'Analysis results', content: { 'application/json': { schema: { $ref: '#/components/schemas/AnalyzeResponse' } } } },
+        },
+      },
+    },
+    '/api/match': {
+      post: {
+        summary: 'Match frontend/backend interfaces',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'Match results', content: { 'application/json': { schema: { $ref: '#/components/schemas/MatchResponse' } } } },
+          400: { description: 'No analyzed repos', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/generate': {
+      post: {
+        summary: 'Generate glue code',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'Generated code', content: { 'application/json': { schema: { $ref: '#/components/schemas/GenerateResponse' } } } },
+          400: { description: 'No analyzed repos', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/integrate': {
+      post: {
+        summary: 'Generate integration config',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'Integration config', content: { 'application/json': { schema: { $ref: '#/components/schemas/IntegrateResponse' } } } },
+          400: { description: 'No analyzed repos', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/validate': {
+      post: {
+        summary: 'Validate integration',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'Validation results', content: { 'application/json': { schema: { $ref: '#/components/schemas/ValidateResponse' } } } },
+          400: { description: 'No analyzed repos', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/run-all': {
+      post: {
+        summary: 'Run full pipeline (JSON)',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'Full pipeline results', content: { 'application/json': { schema: { $ref: '#/components/schemas/RunAllResponse' } } } },
+          400: { description: 'No repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/run-all/stream': {
+      get: {
+        summary: 'Run full pipeline (SSE stream)',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'SSE stream of progress messages', content: { 'text/event-stream': { schema: { $ref: '#/components/schemas/SSEMessage' } } } },
+          400: { description: 'No repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/reset': {
+      post: {
+        summary: 'Reset all data',
+        tags: ['System'],
+        responses: {
+          200: { description: 'Reset successful', content: { 'application/json': { schema: { $ref: '#/components/schemas/Success' } } } },
+        },
+      },
+    },
+    '/api/jobs': {
+      post: {
+        summary: 'Start async pipeline job',
+        description: 'Starts the full pipeline asynchronously and returns a job ID immediately',
+        tags: ['Jobs'],
+        responses: {
+          200: { description: 'Job started', content: { 'application/json': { schema: { $ref: '#/components/schemas/JobCreated' } } } },
+          400: { description: 'No repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+      get: {
+        summary: 'List all jobs',
+        tags: ['Jobs'],
+        responses: {
+          200: { description: 'List of jobs', content: { 'application/json': { schema: { $ref: '#/components/schemas/JobList' } } } },
+        },
+      },
+    },
+    '/api/jobs/{id}': {
+      get: {
+        summary: 'Get job status and result',
+        tags: ['Jobs'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Job details', content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } } },
+          404: { description: 'Job not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/history': {
+      get: {
+        summary: 'Get git commit history',
+        tags: ['System'],
+        responses: {
+          200: { description: 'Git history for all repos', content: { 'application/json': { schema: { $ref: '#/components/schemas/HistoryResponse' } } } },
+          400: { description: 'No repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/apply': {
+      post: {
+        summary: 'Apply changes via fork + PR',
+        description: 'Forks repositories to the [repofuse](https://github.com/repofuse) organization, commits generated code, and creates pull requests',
+        tags: ['Pipeline'],
+        responses: {
+          200: { description: 'Apply results with PR URLs', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApplyResponse' } } } },
+          400: { description: 'No analyzed repos', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          500: { description: 'GitHub token not configured', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      Health: { type: 'object', properties: { status: { type: 'string' }, timestamp: { type: 'string' } } },
+      Error: { type: 'object', properties: { error: { type: 'string' } } },
+      Success: { type: 'object', properties: { success: { type: 'boolean' } } },
+      AddRepoRequest: { type: 'object', required: ['url'], properties: { url: { type: 'string', example: 'https://github.com/user/repo' } } },
+      AddRepoResponse: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' }, addedAt: { type: 'string' } } },
+      AddOrgResponse: { type: 'object', properties: { org: { type: 'string' }, added: { type: 'array', items: { $ref: '#/components/schemas/AddRepoResponse' } }, total: { type: 'number' } } },
+      RepoList: { type: 'object', properties: { repos: { type: 'array', items: { $ref: '#/components/schemas/Repo' } } } },
+      Repo: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' }, addedAt: { type: 'string' }, summary: { $ref: '#/components/schemas/RepoSummary' } } },
+      RepoSummary: {
+        type: 'object',
+        properties: {
+          url: { type: 'string' },
+          language: { type: 'string' },
+          framework: { type: 'string' },
+          entryPoints: { type: 'array', items: { type: 'string' } },
+          apiRoutes: { type: 'array', items: { type: 'string' } },
+          apiCalls: { type: 'array', items: { $ref: '#/components/schemas/ApiCall' } },
+          configFiles: { type: 'array', items: { type: 'string' } },
+          envVars: { type: 'array', items: { type: 'string' } },
+          dependencies: { type: 'object' },
+        },
+      },
+      ApiCall: { type: 'object', properties: { method: { type: 'string' }, path: { type: 'string' }, file: { type: 'string' } } },
+      AnalyzeResponse: { type: 'object', properties: { results: { type: 'array', items: { $ref: '#/components/schemas/RepoSummary' } } } },
+      MatchResponse: {
+        type: 'object',
+        properties: {
+          matched: { type: 'array', items: { type: 'object' } },
+          missingInBackend: { type: 'array', items: { $ref: '#/components/schemas/ApiCall' } },
+          unusedInBackend: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      GenerateResponse: {
+        type: 'object',
+        properties: {
+          apiClient: { type: 'string' },
+          corsConfig: { type: 'string' },
+          missingEndpoints: { type: 'string' },
+          sharedTypes: { type: 'string' },
+        },
+      },
+      IntegrateResponse: {
+        type: 'object',
+        properties: {
+          strategy: { type: 'string', enum: ['monorepo', 'docker-compose'] },
+          envFile: { type: 'string' },
+          startupScript: { type: 'string' },
+          dockerCompose: { type: 'string' },
+          projectStructure: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      ValidateResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          errors: { type: 'array', items: { type: 'string' } },
+          fixes: { type: 'array', items: { type: 'string' } },
+          report: { $ref: '#/components/schemas/Report' },
+        },
+      },
+      Report: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['success', 'partial', 'failed'] },
+          reposAnalyzed: { type: 'number' },
+          endpointsMatched: { type: 'number' },
+          endpointsMissing: { type: 'number' },
+          filesGenerated: { type: 'array', items: { type: 'string' } },
+          estimatedTimeSaved: { type: 'string' },
+          summary: { type: 'string' },
+        },
+      },
+      Metrics: {
+        type: 'object',
+        properties: {
+          timeSaved: { type: 'object', properties: { total: { type: 'number' }, unit: { type: 'string' } } },
+          tasksAutomated: { type: 'array', items: { type: 'string' } },
+          costSavings: { type: 'object', properties: { totalSavings: { type: 'number' }, currency: { type: 'string' } } },
+          summary: { type: 'string' },
+        },
+      },
+      RunAllResponse: {
+        type: 'object',
+        properties: {
+          logs: { type: 'array', items: { type: 'object' } },
+          analysis: { type: 'array', items: { $ref: '#/components/schemas/RepoSummary' } },
+          matching: { $ref: '#/components/schemas/MatchResponse' },
+          generated: { $ref: '#/components/schemas/GenerateResponse' },
+          integration: { $ref: '#/components/schemas/IntegrateResponse' },
+          validation: { $ref: '#/components/schemas/ValidateResponse' },
+          metrics: { $ref: '#/components/schemas/Metrics' },
+        },
+      },
+      SSEMessage: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+          type: { type: 'string', enum: ['info', 'success', 'warning', 'error'] },
+          timestamp: { type: 'string' },
+        },
+      },
+      HistoryResponse: {
+        type: 'object',
+        properties: {
+          history: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                repo: { type: 'string' },
+                commits: { type: 'array', items: { $ref: '#/components/schemas/Commit' } },
+              },
+            },
+          },
+        },
+      },
+      Commit: {
+        type: 'object',
+        properties: {
+          hash: { type: 'string' },
+          message: { type: 'string' },
+          date: { type: 'string' },
+          author: { type: 'string' },
+        },
+      },
+      ApplyResponse: {
+        type: 'object',
+        properties: {
+          results: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                repo: { type: 'string' },
+                forkUrl: { type: 'string' },
+                prUrl: { type: 'string' },
+                error: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      JobCreated: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string' },
+          status: { type: 'string', enum: ['pending'] },
+        },
+      },
+      JobList: {
+        type: 'object',
+        properties: {
+          jobs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                status: { type: 'string', enum: ['pending', 'running', 'completed', 'failed'] },
+                createdAt: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      Job: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'running', 'completed', 'failed'] },
+          createdAt: { type: 'string' },
+          completedAt: { type: 'string' },
+          result: { $ref: '#/components/schemas/RunAllResponse' },
+          error: { type: 'string' },
+          logs: { type: 'array', items: { $ref: '#/components/schemas/SSEMessage' } },
+        },
+      },
+    },
+  },
+};

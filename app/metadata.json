@@ -1,0 +1,5 @@
+{
+  "name": "conect",
+  "description": "A minimal web application to connect multiple Git repositories into one project.",
+  "requestFramePermissions": []
+}
