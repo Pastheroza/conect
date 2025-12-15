@@ -6,6 +6,29 @@ interface LogPanelProps {
   logs: LogEntry[];
 }
 
+// Convert URLs in text to clickable links
+const linkifyMessage = (message: string) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = message.split(urlRegex);
+  
+  return parts.map((part, i) => {
+    if (urlRegex.test(part)) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-blue-400 transition-colors"
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
 export const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +73,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
                   {log.type === 'success' && '✓ '}
                   {log.type === 'error' && '✗ '}
                   {log.type === 'warning' && '! '}
-                  {log.message}
+                  {linkifyMessage(log.message)}
                 </span>
               </div>
             ))}

@@ -42,6 +42,18 @@ export const api = {
   },
 
   /**
+   * Add all repos from a GitHub organization
+   */
+  addOrg: async (org: string, includeForks: boolean = false) => {
+    const res = await fetch(`${BASE_URL}/api/orgs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org, includeForks }),
+    });
+    return handleResponse(res);
+  },
+
+  /**
    * Delete a repository
    */
   deleteRepo: async (id: string) => {

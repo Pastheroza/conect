@@ -105,6 +105,40 @@ const App: React.FC = () => {
     addLog('User signed out.', 'info');
   };
 
+  // Handler: Add Organization
+  const handleAddOrg = async (org: string, includeForks: boolean) => {
+    setLogs([]);
+    setPipelineStatus({
+      [ActionType.ANALYZE]: 'idle',
+      [ActionType.MATCH]: 'idle',
+      [ActionType.GENERATE]: 'idle',
+      [ActionType.INTEGRATE]: 'idle',
+      [ActionType.VALIDATE]: 'idle',
+      [ActionType.APPLY]: 'idle',
+      [ActionType.PUBLISH]: 'idle',
+    });
+    setStepErrors({});
+
+    try {
+      addLog(`Adding organization: ${org}...`, 'info');
+      const data = await api.addOrg(org, includeForks);
+      
+      if (data.added && data.added.length > 0) {
+        const newRepos: Repository[] = data.added.map((r: any) => ({
+          id: r.id || generateId(),
+          url: r.url,
+          addedAt: r.addedAt ? new Date(r.addedAt) : new Date(),
+        }));
+        setRepos((prev) => [...prev, ...newRepos]);
+        addLog(`Added ${data.total} repositories from ${org}.`, 'success');
+      } else {
+        addLog(`No repositories found in ${org}.`, 'warning');
+      }
+    } catch (err: any) {
+      addLog(`Failed to add org: ${err.message}`, 'error');
+    }
+  };
+
   // Handler: Add Repository
   const handleAddRepo = async (url: string) => {
     if (repos.some((r) => r.url === url)) {
@@ -351,10 +385,27 @@ const App: React.FC = () => {
           const resApply = await api.apply();
           
           if (resApply.results) {
+             let successCount = 0;
              resApply.results.forEach((r: any) => {
-               addLog(`PR Created: ${r.prUrl}`, 'success');
+               if (r.error) {
+                 addLog(`❌ ${r.repo}: ${r.error}`, 'error');
+               } else {
+                 successCount++;
+                 // Show summary
+                 if (r.summary) {
+                   addLog(`📊 ${r.repo}: ${r.summary.framework || 'unknown'} (${r.summary.routes} routes, ${r.summary.apiCalls} API calls)`, 'info');
+                 }
+                 // Show files added
+                 if (r.filesAdded?.length) {
+                   addLog(`📁 Files: ${r.filesAdded.join(', ')}`, 'info');
+                 }
+                 // Show clickable PR link
+                 if (r.prUrl) {
+                   addLog(`🔗 PR: ${r.prUrl}`, 'success');
+                 }
+               }
              });
-             addLog('All changes applied successfully.', 'success');
+             addLog(`✅ Created ${successCount} PR(s) successfully.`, 'success');
              updateStepStatus(type, 'success');
           } else {
              addLog('Changes applied, but no PR details returned.', 'success');
@@ -392,7 +443,7 @@ const App: React.FC = () => {
           onLogout={handleLogout}
         />
 
-        <RepoInput onAddRepo={handleAddRepo} />
+        <RepoInput onAddRepo={handleAddRepo} onAddOrg={handleAddOrg} />
 
         <RepoList repos={repos} onRemoveRepo={handleRemoveRepo} />
 
