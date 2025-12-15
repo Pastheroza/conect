@@ -102,7 +102,7 @@ app.post('/api/repos', async (req, res) => {
 
 // Add all public repos from a GitHub organization
 app.post('/api/orgs', async (req, res) => {
-  const { org } = req.body;
+  const { org, includeForks } = req.body;
   if (!org) return res.status(400).json({ error: 'org required' });
 
   // Fetch all public repos from org
@@ -115,7 +115,7 @@ app.post('/api/orgs', async (req, res) => {
   const added: { id: string; url: string; addedAt: string }[] = [];
 
   for (const repo of orgRepos) {
-    if (repo.fork) continue; // Skip forks
+    if (repo.fork && !includeForks) continue; // Skip forks unless includeForks is true
     const url = repo.html_url;
     const id = Buffer.from(url).toString('base64url');
     if (!repos.has(id)) {

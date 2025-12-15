@@ -70,7 +70,7 @@ export const swaggerSpec = {
         tags: ['Repositories'],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['org'], properties: { org: { type: 'string', example: 'facebook' } } } } },
+          content: { 'application/json': { schema: { type: 'object', required: ['org'], properties: { org: { type: 'string', example: 'facebook' }, includeForks: { type: 'boolean', example: false, description: 'Include forked repos (default: false)' } } } } },
         },
         responses: {
           200: { description: 'Repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/AddOrgResponse' } } } },
