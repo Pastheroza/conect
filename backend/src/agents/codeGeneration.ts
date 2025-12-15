@@ -1,3 +1,4 @@
+import { error } from '../logger.js';
 import { RepoSummary } from './repoAnalysis.js';
 import { MatchResult } from './interfaceMatching.js';
 import { loadPrompt, callGroqJson } from '../groq.js';
@@ -21,7 +22,7 @@ export async function generateCode(
   try {
     return await generateCodeWithAI(repos, matchResult);
   } catch (e) {
-    console.error('AI code generation failed, using basic templates:', e);
+    error('AI code generation failed, using basic templates:', e);
     return generateBasicCode(repos, matchResult);
   }
 }

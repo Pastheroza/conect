@@ -1,3 +1,4 @@
+import { error } from '../logger.js';
 import { RepoSummary } from './repoAnalysis.js';
 import { loadPrompt, callGroqJson } from '../groq.js';
 
@@ -27,7 +28,7 @@ export async function matchInterfaces(repos: RepoSummary[]): Promise<MatchResult
     try {
       await enhanceMatchingWithAI(repos, result);
     } catch (e) {
-      console.error('AI matching failed, using basic matching:', e);
+      error('AI matching failed, using basic matching:', e);
     }
   }
   

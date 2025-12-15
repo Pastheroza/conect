@@ -1,3 +1,4 @@
+import { error } from '../logger.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { readFile, readdir, stat } from 'fs/promises';
@@ -41,7 +42,7 @@ export async function analyzeRepo(repoPath: string, url: string): Promise<RepoSu
     try {
       await enhanceWithAI(repoPath, summary);
     } catch (e) {
-      console.error('AI analysis failed, using basic analysis:', e);
+      error('AI analysis failed, using basic analysis:', e);
     }
   }
   

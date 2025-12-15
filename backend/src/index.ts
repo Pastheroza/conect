@@ -1,3 +1,4 @@
+import { log } from './logger.js';
 import express, { Response } from 'express';
 import cors from 'cors';
 import { mkdtemp, rm } from 'fs/promises';
@@ -20,7 +21,7 @@ app.use(express.json());
 
 // Request logging
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  log(` ${req.method} ${req.path}`);
   next();
 });
 
@@ -569,5 +570,5 @@ ${summaries.map(s => `- ${s.url} (${s.framework})`).join('\n')}
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  log(`Server running on port ${PORT}`);
 });

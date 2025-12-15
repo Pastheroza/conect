@@ -1,3 +1,4 @@
+import { error } from './logger.js';
 import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -72,7 +73,7 @@ export async function callGroqJson<T>(prompt: string, maxTokens: number = 4096):
       const fixed = jsonStr.replace(/,(\s*[}\]])/g, '$1');
       return JSON.parse(fixed.trim());
     } catch {
-      console.error('Failed to parse Groq response as JSON:', response.substring(0, 500));
+      error('Failed to parse Groq response as JSON:', response.substring(0, 500));
       throw new Error('Invalid JSON response from Groq');
     }
   }

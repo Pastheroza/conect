@@ -1,3 +1,4 @@
+import { error } from '../logger.js';
 import { RepoSummary } from './repoAnalysis.js';
 import { loadPrompt, callGroqJson } from '../groq.js';
 
@@ -19,7 +20,7 @@ export async function generateIntegration(repos: RepoSummary[]): Promise<Integra
     try {
       await enhanceIntegrationWithAI(repos, result);
     } catch (e) {
-      console.error('AI integration generation failed, using basic:', e);
+      error('AI integration generation failed, using basic:', e);
     }
   }
   
