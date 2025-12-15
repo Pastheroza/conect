@@ -68,9 +68,18 @@ app.get('/api/repos', (req, res) => {
 });
 
 // Add repo
-app.post('/api/repos', (req, res) => {
+app.post('/api/repos', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
+  
+  // Validate GitHub repo exists
+  const parsed = parseRepoUrl(url);
+  if (parsed) {
+    const check = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`);
+    if (!check.ok) {
+      return res.status(400).json({ error: `Repository not found or not accessible: ${url}` });
+    }
+  }
   
   const id = Buffer.from(url).toString('base64url');
   const addedAt = new Date().toISOString();
