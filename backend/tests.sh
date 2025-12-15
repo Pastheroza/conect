@@ -347,6 +347,9 @@ main() {
     # Test missing URL
     run_post_test "Add Repo (no URL)" "/api/repos" '{}' 400 "error"
     
+    # Test non-existent repo
+    run_post_test "Add Repo (not found)" "/api/repos" '{"url":"https://github.com/nonexistent/repo123456"}' 400 "error"
+    
     # ==========================================
     # Repo Analysis Agent
     # ==========================================
