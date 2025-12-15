@@ -112,17 +112,26 @@ curl -X POST https://conect.api.hurated.com/api/run-all | jq
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/repos` | POST | Add repository |
+| `/health` | GET | Health check |
+| `/api/docs` | GET | Swagger UI |
+| `/api/docs/swagger.json` | GET | OpenAPI spec |
 | `/api/repos` | GET | List repositories |
+| `/api/repos` | POST | Add repository |
 | `/api/repos/:id` | DELETE | Remove repository |
 | `/api/analyze` | POST | Run Repo Analysis Agent |
 | `/api/match` | POST | Run Interface Matching Agent |
 | `/api/generate` | POST | Run Code Generation Agent |
 | `/api/integrate` | POST | Run Integration Agent |
 | `/api/validate` | POST | Run Validation Agent |
-| `/api/run-all` | POST | Run full pipeline |
+| `/api/run-all` | POST | Run full pipeline (JSON) |
+| `/api/run-all/stream` | GET | Run full pipeline (SSE) |
 | `/api/reset` | POST | Clear all data |
-| `/health` | GET | Health check |
+| `/api/history` | GET | Git commit history |
+| `/api/apply` | POST | Fork repos + create PRs |
+
+### Fork Organization
+
+All forks are created in the [repofuse](https://github.com/repofuse) organization.
 
 ### Live Demo URL
 

@@ -3,7 +3,7 @@ export const swaggerSpec = {
   info: {
     title: 'conect API',
     version: '1.0.0',
-    description: 'AI-powered multi-agent system for integrating multiple GitHub repositories',
+    description: 'AI-powered multi-agent system for integrating multiple GitHub repositories. Forks are created in the [repofuse](https://github.com/repofuse) organization.',
   },
   servers: [
     { url: 'https://conect.api.hurated.com', description: 'Production' },
@@ -166,7 +166,7 @@ export const swaggerSpec = {
     '/api/apply': {
       post: {
         summary: 'Apply changes via fork + PR',
-        description: 'Forks repositories, commits generated code, and creates pull requests',
+        description: 'Forks repositories to the [repofuse](https://github.com/repofuse) organization, commits generated code, and creates pull requests',
         tags: ['Pipeline'],
         responses: {
           200: { description: 'Apply results with PR URLs', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApplyResponse' } } } },
