@@ -26,6 +26,7 @@ const App: React.FC = () => {
     [ActionType.GENERATE]: 'idle',
     [ActionType.INTEGRATE]: 'idle',
     [ActionType.VALIDATE]: 'idle',
+    [ActionType.APPLY]: 'idle',
   });
 
   // Derived state to check requirements: Just need 2 or more repos
@@ -107,6 +108,9 @@ const App: React.FC = () => {
       return;
     }
 
+    // Clear logs to start fresh for this new workflow
+    setLogs([]);
+
     // Reset pipeline statuses when new data is added, as previous analysis is now stale
     setPipelineStatus({
       [ActionType.ANALYZE]: 'idle',
@@ -114,6 +118,7 @@ const App: React.FC = () => {
       [ActionType.GENERATE]: 'idle',
       [ActionType.INTEGRATE]: 'idle',
       [ActionType.VALIDATE]: 'idle',
+      [ActionType.APPLY]: 'idle',
     });
 
     try {
@@ -148,6 +153,7 @@ const App: React.FC = () => {
       [ActionType.GENERATE]: 'idle',
       [ActionType.INTEGRATE]: 'idle',
       [ActionType.VALIDATE]: 'idle',
+      [ActionType.APPLY]: 'idle',
     });
 
     try {
@@ -169,6 +175,7 @@ const App: React.FC = () => {
       [ActionType.GENERATE]: 'idle',
       [ActionType.INTEGRATE]: 'idle',
       [ActionType.VALIDATE]: 'idle',
+      [ActionType.APPLY]: 'idle',
     });
     
     addLog('Starting Auto-Pilot (Streaming)...', 'info');
@@ -204,6 +211,7 @@ const App: React.FC = () => {
           [ActionType.GENERATE]: 'success',
           [ActionType.INTEGRATE]: 'success',
           [ActionType.VALIDATE]: 'success',
+          [ActionType.APPLY]: 'idle', // Apply is usually a manual final step
         });
       } catch (e) {
         addLog('Sequence complete but failed to parse final result.', 'warning');
@@ -240,7 +248,11 @@ const App: React.FC = () => {
              [ActionType.GENERATE]: 'idle',
              [ActionType.INTEGRATE]: 'idle',
              [ActionType.VALIDATE]: 'idle',
+             [ActionType.APPLY]: 'idle',
            });
+           
+           // Clear logs for a completely fresh start, then show success
+           setLogs([]);
            addLog('Project reset successfully.', 'success');
          } catch(e: any) {
            addLog(`Reset failed: ${e.message}`, 'error');
@@ -295,7 +307,23 @@ const App: React.FC = () => {
           } else {
             addLog(`Validation: Found issues.`, 'warning');
             resVal.fixes?.forEach((f: string) => addLog(`Fix: ${f}`, 'info'));
-            updateStepStatus(type, 'error'); // Mark as error if validation fails
+            updateStepStatus(type, 'error');
+          }
+          break;
+        
+        case ActionType.APPLY:
+          addLog('Forking repositories and creating Pull Requests...', 'info');
+          const resApply = await api.apply();
+          
+          if (resApply.results) {
+             resApply.results.forEach((r: any) => {
+               addLog(`PR Created: ${r.prUrl}`, 'success');
+             });
+             addLog('All changes applied successfully.', 'success');
+             updateStepStatus(type, 'success');
+          } else {
+             addLog('Changes applied, but no PR details returned.', 'success');
+             updateStepStatus(type, 'success');
           }
           break;
       }
@@ -325,7 +353,7 @@ const App: React.FC = () => {
         <ActionPanel 
           onAction={handleAction} 
           isReady={isReady} 
-          isProcessing={isProcessing}
+          isProcessing={isProcessing} 
           pipelineStatus={pipelineStatus}
         />
 

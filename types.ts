@@ -37,6 +37,7 @@ export enum ActionType {
   GENERATE = 'GENERATE',
   INTEGRATE = 'INTEGRATE',
   VALIDATE = 'VALIDATE',
+  APPLY = 'APPLY',
   RESET = 'RESET'
 }
 

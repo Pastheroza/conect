@@ -102,6 +102,16 @@ export const api = {
   },
 
   /**
+   * Step 6: Apply Changes (Fork + PR)
+   */
+  apply: async () => {
+    const res = await fetch(`${BASE_URL}/api/apply`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  /**
    * Run Full Pipeline (JSON)
    */
   runAll: async () => {

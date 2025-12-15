@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActionType, StepStatus } from '../types';
-import { Zap, Search, RotateCcw, Lock, Check, FileCode2, Puzzle, Loader2, AlertCircle } from 'lucide-react';
+import { Zap, Search, RotateCcw, Lock, Check, FileCode2, Puzzle, Loader2, AlertCircle, GitPullRequest } from 'lucide-react';
 
 interface ActionPanelProps {
   onAction: (type: ActionType) => void;
@@ -15,6 +15,9 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   isProcessing,
   pipelineStatus 
 }) => {
+  // Check if pipeline is mostly complete to unlock Apply
+  const isValidationComplete = pipelineStatus[ActionType.VALIDATE] === 'success';
+
   return (
     <div className="mb-8">
       {!isReady && (
@@ -97,6 +100,37 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             status={pipelineStatus[ActionType.VALIDATE]}
           />
         </div>
+      </div>
+
+      {/* Deployment Section */}
+      <div className="mb-6">
+         <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 pl-1">
+          Deployment
+        </h4>
+        <button
+          onClick={() => onAction(ActionType.APPLY)}
+          disabled={!isValidationComplete || isProcessing}
+          className={`
+            w-full flex items-center justify-center gap-3 p-4 rounded-xl border transition-all shadow-sm
+            ${isValidationComplete 
+              ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:shadow-md cursor-pointer' 
+              : 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed opacity-70'}
+          `}
+        >
+          {pipelineStatus[ActionType.APPLY] === 'loading' ? (
+             <Loader2 className="w-5 h-5 animate-spin" />
+          ) : pipelineStatus[ActionType.APPLY] === 'success' ? (
+             <Check className="w-5 h-5" />
+          ) : (
+             <GitPullRequest className="w-5 h-5" />
+          )}
+          
+          <span className="font-semibold text-sm">
+            {pipelineStatus[ActionType.APPLY] === 'loading' ? 'Creating Pull Requests...' : 
+             pipelineStatus[ActionType.APPLY] === 'success' ? 'PRs Created Successfully' : 
+             'Apply Changes & Create PRs'}
+          </span>
+        </button>
       </div>
 
       {/* Danger Zone */}
