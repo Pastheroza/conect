@@ -49,15 +49,34 @@ export async function callGroqJson<T>(prompt: string, maxTokens: number = 4096):
   
   // Extract JSON from response (handle markdown code blocks)
   let jsonStr = response;
+  
+  // Try to find JSON in code block first
   const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) {
     jsonStr = jsonMatch[1];
   }
   
+  // Try to find JSON object/array directly
+  if (!jsonStr.trim().startsWith('{') && !jsonStr.trim().startsWith('[')) {
+    const objectMatch = response.match(/(\{[\s\S]*\})/);
+    const arrayMatch = response.match(/(\[[\s\S]*\])/);
+    jsonStr = objectMatch?.[1] || arrayMatch?.[1] || jsonStr;
+  }
+  
   try {
     return JSON.parse(jsonStr.trim());
   } catch (e) {
-    console.error('Failed to parse Groq response as JSON:', response);
+    // Try to fix common JSON issues
+    try {
+      // Remove trailing commas
+      const fixed = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+      return JSON.parse(fixed.trim());
+    } catch {
+      console.error('Failed to parse Groq response as JSON:', response.substring(0, 500));
+      throw new Error('Invalid JSON response from Groq');
+    }
+  }
+}
     throw new Error('Invalid JSON response from Groq');
   }
 }
