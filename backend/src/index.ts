@@ -102,8 +102,12 @@ app.post('/api/repos', async (req, res) => {
 
 // Add all public repos from a GitHub organization
 app.post('/api/orgs', async (req, res) => {
-  const { org, includeForks } = req.body;
+  let { org, includeForks } = req.body;
   if (!org) return res.status(400).json({ error: 'org required' });
+
+  // Parse org name from URL if provided (e.g., https://github.com/orgs/facebook or https://github.com/facebook)
+  const urlMatch = org.match(/github\.com\/(?:orgs\/)?([^\/\s]+)/);
+  if (urlMatch) org = urlMatch[1];
 
   // Fetch all public repos from org
   const response = await fetch(`https://api.github.com/orgs/${org}/repos?type=public&per_page=100`);
