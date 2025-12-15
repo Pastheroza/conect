@@ -6,7 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = join(__dirname, '..', 'prompts');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-70b-versatile';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
 export async function loadPrompt(name: string, vars: Record<string, string>): Promise<string> {
   let prompt = await readFile(join(PROMPTS_DIR, `${name}.md`), 'utf-8');
