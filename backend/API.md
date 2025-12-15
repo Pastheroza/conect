@@ -2,6 +2,29 @@
 
 Base URL: `https://conect.api.hurated.com`
 
+## Quick Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/docs` | Swagger UI |
+| GET | `/api/docs/swagger.json` | OpenAPI spec |
+| GET | `/api/repos` | List repositories |
+| POST | `/api/repos` | Add repository |
+| DELETE | `/api/repos/:id` | Delete repository |
+| POST | `/api/analyze` | Analyze repositories |
+| POST | `/api/match` | Match interfaces |
+| POST | `/api/generate` | Generate code |
+| POST | `/api/integrate` | Generate integration |
+| POST | `/api/validate` | Validate integration |
+| POST | `/api/run-all` | Full pipeline (JSON) |
+| GET | `/api/run-all/stream` | Full pipeline (SSE) |
+| POST | `/api/reset` | Reset all data |
+| GET | `/api/history` | Git commit history |
+| POST | `/api/apply` | Fork repos + create PRs |
+
+---
+
 ## Endpoints
 
 ### Health Check
@@ -20,6 +43,26 @@ GET /health
 
 ---
 
+### Documentation
+
+#### Swagger UI
+
+```
+GET /api/docs
+```
+
+Returns interactive Swagger UI HTML page.
+
+#### OpenAPI Spec
+
+```
+GET /api/docs/swagger.json
+```
+
+Returns OpenAPI 3.0 JSON specification.
+
+---
+
 ### Repositories
 
 #### List Repositories
@@ -33,7 +76,9 @@ GET /api/repos
 {
   "repos": [
     {
+      "id": "aHR0cHM6Ly9naXRodWIuY29t...",
       "url": "https://github.com/user/frontend",
+      "addedAt": "2025-12-14T22:00:00.000Z",
       "summary": { ... }  // Present after /api/analyze
     }
   ]
@@ -338,7 +383,9 @@ eventSource.onerror = () => eventSource.close();
 
 ---
 
-### Reset
+### System
+
+#### Reset
 
 ```
 POST /api/reset
@@ -353,9 +400,7 @@ Clears all repositories and analysis data.
 }
 ```
 
----
-
-### History
+#### History
 
 ```
 GET /api/history
@@ -391,13 +436,15 @@ Gets git commit history for all added repositories.
 
 ---
 
-### Apply Changes (Fork + PR)
+### Apply Changes
+
+#### Fork + PR
 
 ```
 POST /api/apply
 ```
 
-Forks repositories to the service org, commits generated code, and creates PRs.
+Forks repositories to the service org ([repofuse](https://github.com/repofuse)), commits generated code, and creates pull requests.
 
 **Response** `200 OK`
 ```json
@@ -430,16 +477,6 @@ Forks repositories to the service org, commits generated code, and creates PRs.
   "error": "GITHUB_TOKEN not configured"
 }
 ```
-
----
-
-## Swagger Documentation
-
-```
-GET /api/docs
-```
-
-Interactive API documentation (Swagger UI).
 
 ---
 

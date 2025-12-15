@@ -22,6 +22,24 @@ export const swaggerSpec = {
         },
       },
     },
+    '/api/docs': {
+      get: {
+        summary: 'Swagger UI documentation',
+        tags: ['Documentation'],
+        responses: {
+          200: { description: 'HTML page with Swagger UI', content: { 'text/html': { schema: { type: 'string' } } } },
+        },
+      },
+    },
+    '/api/docs/swagger.json': {
+      get: {
+        summary: 'OpenAPI specification',
+        tags: ['Documentation'],
+        responses: {
+          200: { description: 'OpenAPI 3.0 JSON spec', content: { 'application/json': { schema: { type: 'object' } } } },
+        },
+      },
+    },
     '/api/repos': {
       get: {
         summary: 'List all repositories',

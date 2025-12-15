@@ -464,6 +464,9 @@ main() {
     # Test history endpoint (no repos)
     run_test "History (no repos)" "/api/history" 400 "error"
     
+    # Test apply endpoint (no repos)
+    run_post_test "Apply (no repos)" "/api/apply" '{}' 400 "error"
+    
     # ==========================================
     # Reset
     # ==========================================
