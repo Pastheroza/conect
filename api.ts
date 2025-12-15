@@ -102,11 +102,24 @@ export const api = {
   },
 
   /**
-   * Step 6: Apply Changes (Fork + PR)
+   * Step 6a: Apply Changes (Fork + PR)
    */
   apply: async () => {
     const res = await fetch(`${BASE_URL}/api/apply`, {
       method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  /**
+   * Step 6b: Publish to new Repository
+   * Note: This assumes a new endpoint /api/publish exists
+   */
+  publish: async (name: string, isPrivate: boolean = false) => {
+    const res = await fetch(`${BASE_URL}/api/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, private: isPrivate }),
     });
     return handleResponse(res);
   },

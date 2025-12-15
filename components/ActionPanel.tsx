@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActionType, StepStatus } from '../types';
-import { Zap, Search, RotateCcw, Lock, Check, FileCode2, Puzzle, Loader2, AlertCircle, GitPullRequest } from 'lucide-react';
+import { Zap, Search, RotateCcw, Lock, Check, FileCode2, Puzzle, Loader2, AlertCircle, GitPullRequest, Rocket, Github } from 'lucide-react';
 
 interface ActionPanelProps {
-  onAction: (type: ActionType) => void;
+  onAction: (type: ActionType, payload?: any) => void;
   isReady: boolean;
   isProcessing: boolean;
   pipelineStatus: Record<string, StepStatus>;
@@ -17,7 +17,9 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   pipelineStatus,
   stepErrors = {}
 }) => {
-  // Check if pipeline is mostly complete to unlock Apply
+  const [projectName, setProjectName] = useState('');
+  
+  // Check if pipeline is mostly complete to unlock Apply/Publish
   const isValidationComplete = pipelineStatus[ActionType.VALIDATE] === 'success';
 
   return (
@@ -124,40 +126,72 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
       {/* Deployment Section */}
       <div className="mb-6">
          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 pl-1">
-          Deployment
+          Deployment Strategy
         </h4>
-        <div className={`${pipelineStatus[ActionType.APPLY] === 'error' ? 'animate-error-shake' : ''}`}>
-          <button
-            onClick={() => onAction(ActionType.APPLY)}
-            disabled={!isValidationComplete || isProcessing}
-            title={stepErrors[ActionType.APPLY] || 'Deploy changes'}
-            className={`
-              w-full flex items-center justify-center gap-3 p-4 rounded-xl border transition-all shadow-sm
-              ${pipelineStatus[ActionType.APPLY] === 'error' 
-                ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100' 
-                : isValidationComplete 
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:shadow-md cursor-pointer' 
-                  : 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed opacity-70'
-              }
-            `}
-          >
-            {pipelineStatus[ActionType.APPLY] === 'loading' ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : pipelineStatus[ActionType.APPLY] === 'success' ? (
-              <Check className="w-5 h-5" />
-            ) : pipelineStatus[ActionType.APPLY] === 'error' ? (
-              <AlertCircle className="w-5 h-5" />
-            ) : (
-              <GitPullRequest className="w-5 h-5" />
-            )}
-            
-            <span className="font-semibold text-sm">
-              {pipelineStatus[ActionType.APPLY] === 'loading' ? 'Creating Pull Requests...' : 
-              pipelineStatus[ActionType.APPLY] === 'success' ? 'PRs Created Successfully' : 
-              pipelineStatus[ActionType.APPLY] === 'error' ? 'Deployment Failed' :
-              'Apply Changes & Create PRs'}
-            </span>
-          </button>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Option A: Create Pull Requests */}
+          <div className={`${pipelineStatus[ActionType.APPLY] === 'error' ? 'animate-error-shake' : ''}`}>
+             <button
+              onClick={() => onAction(ActionType.APPLY)}
+              disabled={!isValidationComplete || isProcessing}
+              title={stepErrors[ActionType.APPLY] || 'Update existing repos via PRs'}
+              className={`
+                w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all shadow-sm
+                ${isValidationComplete 
+                  ? 'bg-white border-gray-200 hover:border-indigo-300 hover:shadow-md text-gray-700' 
+                  : 'bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed opacity-60'
+                }
+              `}
+            >
+              <GitPullRequest className={`w-5 h-5 ${isValidationComplete ? 'text-indigo-600' : 'text-gray-400'}`} />
+              <div className="text-center">
+                <div className="font-semibold text-sm">Strategy A: Fork & PR</div>
+                <div className="text-[10px] text-gray-500 mt-1">Update original repositories</div>
+              </div>
+            </button>
+          </div>
+
+          {/* Option B: Create New Repository */}
+          <div className={`p-4 rounded-xl border transition-all shadow-sm ${
+             isValidationComplete 
+             ? 'bg-gradient-to-br from-indigo-50 to-white border-indigo-200' 
+             : 'bg-gray-50 border-gray-100 opacity-60'
+          }`}>
+             <div className="flex items-center gap-2 mb-3">
+               <Github className={`w-4 h-4 ${isValidationComplete ? 'text-indigo-600' : 'text-gray-400'}`} />
+               <span className="font-semibold text-sm text-gray-700">Strategy B: New Repository</span>
+             </div>
+             
+             <div className="space-y-3">
+               <input 
+                  type="text" 
+                  placeholder="new-repo-name"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  disabled={!isValidationComplete || isProcessing}
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+               />
+               <button
+                  onClick={() => onAction(ActionType.PUBLISH, { name: projectName })}
+                  disabled={!isValidationComplete || isProcessing || !projectName.trim()}
+                  className={`
+                    w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all
+                    ${!isValidationComplete || !projectName.trim() || isProcessing
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md active:scale-95'
+                    }
+                  `}
+               >
+                  {pipelineStatus[ActionType.PUBLISH] === 'loading' ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Rocket className="w-3 h-3" />
+                  )}
+                  <span>Create & Push</span>
+               </button>
+             </div>
+          </div>
         </div>
       </div>
 

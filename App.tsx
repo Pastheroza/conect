@@ -27,6 +27,7 @@ const App: React.FC = () => {
     [ActionType.INTEGRATE]: 'idle',
     [ActionType.VALIDATE]: 'idle',
     [ActionType.APPLY]: 'idle',
+    [ActionType.PUBLISH]: 'idle',
   });
 
   // Track specific error messages for each step
@@ -122,6 +123,7 @@ const App: React.FC = () => {
       [ActionType.INTEGRATE]: 'idle',
       [ActionType.VALIDATE]: 'idle',
       [ActionType.APPLY]: 'idle',
+      [ActionType.PUBLISH]: 'idle',
     });
     setStepErrors({});
 
@@ -158,6 +160,7 @@ const App: React.FC = () => {
       [ActionType.INTEGRATE]: 'idle',
       [ActionType.VALIDATE]: 'idle',
       [ActionType.APPLY]: 'idle',
+      [ActionType.PUBLISH]: 'idle',
     });
     setStepErrors({});
 
@@ -181,6 +184,7 @@ const App: React.FC = () => {
       [ActionType.INTEGRATE]: 'idle',
       [ActionType.VALIDATE]: 'idle',
       [ActionType.APPLY]: 'idle',
+      [ActionType.PUBLISH]: 'idle',
     });
     setStepErrors({});
     
@@ -225,6 +229,7 @@ const App: React.FC = () => {
                 [ActionType.INTEGRATE]: 'success',
                 [ActionType.VALIDATE]: 'success',
                 [ActionType.APPLY]: 'idle',
+                [ActionType.PUBLISH]: 'idle',
               });
             } else {
               addLog(`Job failed: ${job.error || 'Unknown error'}`, 'error');
@@ -246,7 +251,7 @@ const App: React.FC = () => {
   };
 
   // Handler: Action Buttons
-  const handleAction = async (type: ActionType) => {
+  const handleAction = async (type: ActionType, payload?: any) => {
     if (type === ActionType.RUN_ALL) {
       handleRunAllJob();
       return;
@@ -265,6 +270,7 @@ const App: React.FC = () => {
              [ActionType.INTEGRATE]: 'idle',
              [ActionType.VALIDATE]: 'idle',
              [ActionType.APPLY]: 'idle',
+             [ActionType.PUBLISH]: 'idle',
            });
            setStepErrors({});
            
@@ -354,6 +360,16 @@ const App: React.FC = () => {
              addLog('Changes applied, but no PR details returned.', 'success');
              updateStepStatus(type, 'success');
           }
+          break;
+
+        case ActionType.PUBLISH:
+          if (!payload?.name) throw new Error("Repository name is required");
+          addLog(`Creating new repository '${payload.name}'...`, 'info');
+          
+          const resPublish = await api.publish(payload.name);
+          
+          addLog(`Repository created successfully: ${resPublish.url || `github.com/${user?.username || 'user'}/${payload.name}`}`, 'success');
+          updateStepStatus(type, 'success');
           break;
       }
     } catch (err: any) {

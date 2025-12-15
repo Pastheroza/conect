@@ -38,6 +38,7 @@ export enum ActionType {
   INTEGRATE = 'INTEGRATE',
   VALIDATE = 'VALIDATE',
   APPLY = 'APPLY',
+  PUBLISH = 'PUBLISH',
   RESET = 'RESET'
 }
 
