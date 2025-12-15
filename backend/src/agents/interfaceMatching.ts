@@ -1,4 +1,5 @@
 import { RepoSummary } from './repoAnalysis.js';
+import { loadPrompt, callGroqJson } from '../groq.js';
 
 export interface ApiCall {
   method: string;
@@ -10,9 +11,70 @@ export interface MatchResult {
   matched: { frontend: ApiCall; backend: string }[];
   missingInBackend: ApiCall[];
   unusedInBackend: string[];
+  // AI-enhanced fields
+  integrationStrategy?: string;
+  mismatches?: { issue: string; solution: string }[];
+  sharedDataModels?: { name: string; mapping?: string }[];
+  configurationNeeded?: string[];
 }
 
-export function matchInterfaces(repos: RepoSummary[]): MatchResult {
+export async function matchInterfaces(repos: RepoSummary[]): Promise<MatchResult> {
+  // First do basic matching
+  const result = matchInterfacesBasic(repos);
+  
+  // Enhance with AI if available
+  if (process.env.GROQ_API_KEY && repos.length >= 2) {
+    try {
+      await enhanceMatchingWithAI(repos, result);
+    } catch (e) {
+      console.error('AI matching failed, using basic matching:', e);
+    }
+  }
+  
+  return result;
+}
+
+async function enhanceMatchingWithAI(repos: RepoSummary[], result: MatchResult): Promise<void> {
+  const prompt = await loadPrompt('match', {
+    repoSummaries: JSON.stringify(repos.map(r => ({
+      url: r.url,
+      purpose: r.purpose,
+      type: r.type,
+      framework: r.framework,
+      language: r.language,
+      apiRoutes: r.apiRoutes,
+      apiCalls: r.apiCalls,
+      dataModels: r.dataModels,
+      envVars: r.envVars,
+    })), null, 2),
+  });
+
+  interface AIMatchResult {
+    integrationStrategy?: string;
+    mismatches?: { issue: string; solution: string }[];
+    missingEndpoints?: { method: string; path: string }[];
+    sharedDataModels?: { name: string; mapping?: string }[];
+    configurationNeeded?: string[];
+  }
+
+  const aiResult = await callGroqJson<AIMatchResult>(prompt);
+  
+  if (aiResult.integrationStrategy) result.integrationStrategy = aiResult.integrationStrategy;
+  if (aiResult.mismatches) result.mismatches = aiResult.mismatches;
+  if (aiResult.sharedDataModels) result.sharedDataModels = aiResult.sharedDataModels;
+  if (aiResult.configurationNeeded) result.configurationNeeded = aiResult.configurationNeeded;
+  
+  // Add AI-detected missing endpoints
+  if (aiResult.missingEndpoints) {
+    for (const ep of aiResult.missingEndpoints) {
+      if (!result.missingInBackend.some(m => m.path === ep.path)) {
+        result.missingInBackend.push({ method: ep.method, path: ep.path, source: 'AI analysis' });
+      }
+    }
+  }
+}
+
+function matchInterfacesBasic(repos: RepoSummary[]): MatchResult {
   const frontendRepos = repos.filter(r => 
     r.framework === 'react' || r.framework === 'nextjs' || r.framework === 'vue'
   );

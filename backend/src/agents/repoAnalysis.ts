@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { readFile, readdir, stat } from 'fs/promises';
 import { join } from 'path';
+import { loadPrompt, callGroqJson } from '../groq.js';
 
 const execAsync = promisify(exec);
 
@@ -21,6 +22,10 @@ export interface RepoSummary {
   configFiles: string[];
   envVars: string[];
   dependencies: Record<string, string>;
+  // AI-enhanced fields
+  purpose?: string;
+  type?: string;
+  dataModels?: { name: string; fields: string[] }[];
 }
 
 export async function cloneRepo(url: string, targetDir: string): Promise<void> {
@@ -28,6 +33,134 @@ export async function cloneRepo(url: string, targetDir: string): Promise<void> {
 }
 
 export async function analyzeRepo(repoPath: string, url: string): Promise<RepoSummary> {
+  // First do fast regex-based analysis
+  const summary = await analyzeRepoBasic(repoPath, url);
+  
+  // Then enhance with AI if GROQ_API_KEY is set
+  if (process.env.GROQ_API_KEY) {
+    try {
+      await enhanceWithAI(repoPath, summary);
+    } catch (e) {
+      console.error('AI analysis failed, using basic analysis:', e);
+    }
+  }
+  
+  return summary;
+}
+
+async function enhanceWithAI(repoPath: string, summary: RepoSummary): Promise<void> {
+  // Collect key files for AI analysis
+  const keyFiles = await collectKeyFiles(repoPath);
+  
+  const prompt = await loadPrompt('analyze', {
+    repoUrl: summary.url,
+    fileList: keyFiles.map(f => f.path).join('\n'),
+    fileContents: keyFiles.map(f => `### ${f.path}\n\`\`\`\n${f.content}\n\`\`\``).join('\n\n'),
+  });
+
+  interface AIAnalysis {
+    purpose?: string;
+    type?: string;
+    framework?: string;
+    language?: string;
+    apiEndpoints?: { method: string; path: string; description?: string }[];
+    apiCalls?: { method: string; path: string; file?: string }[];
+    dataModels?: { name: string; fields: string[] }[];
+    envVars?: string[];
+    entryPoint?: string;
+  }
+
+  const aiResult = await callGroqJson<AIAnalysis>(prompt);
+  
+  // Merge AI results with basic analysis
+  if (aiResult.purpose) summary.purpose = aiResult.purpose;
+  if (aiResult.type) summary.type = aiResult.type;
+  if (aiResult.framework && !summary.framework) summary.framework = aiResult.framework;
+  if (aiResult.language && !summary.language) summary.language = aiResult.language;
+  if (aiResult.dataModels) summary.dataModels = aiResult.dataModels;
+  
+  // Merge API endpoints
+  if (aiResult.apiEndpoints) {
+    for (const ep of aiResult.apiEndpoints) {
+      if (!summary.apiRoutes.includes(ep.path)) {
+        summary.apiRoutes.push(ep.path);
+      }
+    }
+  }
+  
+  // Merge API calls
+  if (aiResult.apiCalls) {
+    for (const call of aiResult.apiCalls) {
+      if (!summary.apiCalls.some(c => c.path === call.path && c.method === call.method)) {
+        summary.apiCalls.push({ method: call.method, path: call.path, file: call.file || 'unknown' });
+      }
+    }
+  }
+  
+  // Merge env vars
+  if (aiResult.envVars) {
+    for (const v of aiResult.envVars) {
+      if (!summary.envVars.includes(v)) {
+        summary.envVars.push(v);
+      }
+    }
+  }
+  
+  if (aiResult.entryPoint && !summary.entryPoints.includes(aiResult.entryPoint)) {
+    summary.entryPoints.push(aiResult.entryPoint);
+  }
+}
+
+async function collectKeyFiles(repoPath: string): Promise<{ path: string; content: string }[]> {
+  const keyFiles: { path: string; content: string }[] = [];
+  const maxFiles = 10;
+  const maxFileSize = 8000;
+  
+  // Priority files to analyze
+  const priorityFiles = [
+    'package.json', 'requirements.txt', 'pyproject.toml',
+    'README.md', '.env.example',
+    'src/index.ts', 'src/index.js', 'src/app.ts', 'src/app.js',
+    'src/main.ts', 'src/main.js', 'main.py', 'app.py',
+    'src/api.ts', 'src/api.js', 'api/index.ts', 'routes/index.ts',
+  ];
+  
+  for (const file of priorityFiles) {
+    if (keyFiles.length >= maxFiles) break;
+    const fullPath = join(repoPath, file);
+    if (await fileExists(fullPath)) {
+      try {
+        let content = await readFile(fullPath, 'utf-8');
+        if (content.length > maxFileSize) {
+          content = content.substring(0, maxFileSize) + '\n... (truncated)';
+        }
+        keyFiles.push({ path: file, content });
+      } catch {}
+    }
+  }
+  
+  // Also find route/api files
+  const routeFiles = await findFiles(repoPath, ['.ts', '.js', '.py']);
+  for (const file of routeFiles) {
+    if (keyFiles.length >= maxFiles) break;
+    const relativePath = file.replace(repoPath + '/', '');
+    if (relativePath.includes('route') || relativePath.includes('api') || relativePath.includes('endpoint')) {
+      if (!keyFiles.some(f => f.path === relativePath)) {
+        try {
+          let content = await readFile(file, 'utf-8');
+          if (content.length > maxFileSize) {
+            content = content.substring(0, maxFileSize) + '\n... (truncated)';
+          }
+          keyFiles.push({ path: relativePath, content });
+        } catch {}
+      }
+    }
+  }
+  
+  return keyFiles;
+}
+
+async function analyzeRepoBasic(repoPath: string, url: string): Promise<RepoSummary> {
   const summary: RepoSummary = {
     url,
     language: null,

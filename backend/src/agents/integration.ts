@@ -1,4 +1,5 @@
 import { RepoSummary } from './repoAnalysis.js';
+import { loadPrompt, callGroqJson } from '../groq.js';
 
 export interface IntegrationResult {
   strategy: 'monorepo' | 'docker-compose';
@@ -6,9 +7,54 @@ export interface IntegrationResult {
   startupScript: string;
   dockerCompose?: string;
   projectStructure: string[];
+  readme?: string;
 }
 
-export function generateIntegration(repos: RepoSummary[]): IntegrationResult {
+export async function generateIntegration(repos: RepoSummary[]): Promise<IntegrationResult> {
+  // First generate basic integration
+  const result = generateIntegrationBasic(repos);
+  
+  // Enhance with AI if available
+  if (process.env.GROQ_API_KEY && repos.length >= 2) {
+    try {
+      await enhanceIntegrationWithAI(repos, result);
+    } catch (e) {
+      console.error('AI integration generation failed, using basic:', e);
+    }
+  }
+  
+  return result;
+}
+
+async function enhanceIntegrationWithAI(repos: RepoSummary[], result: IntegrationResult): Promise<void> {
+  const prompt = await loadPrompt('integrate', {
+    repoSummaries: JSON.stringify(repos.map(r => ({
+      url: r.url,
+      purpose: r.purpose,
+      type: r.type,
+      framework: r.framework,
+      language: r.language,
+      envVars: r.envVars,
+      entryPoints: r.entryPoints,
+    })), null, 2),
+  });
+
+  interface AIIntegrationResult {
+    dockerCompose?: { code: string };
+    envFile?: { code: string };
+    startupScript?: { code: string };
+    readme?: { code: string };
+  }
+
+  const aiResult = await callGroqJson<AIIntegrationResult>(prompt, 4096);
+  
+  if (aiResult.dockerCompose?.code) result.dockerCompose = aiResult.dockerCompose.code;
+  if (aiResult.envFile?.code) result.envFile = aiResult.envFile.code;
+  if (aiResult.startupScript?.code) result.startupScript = aiResult.startupScript.code;
+  if (aiResult.readme?.code) result.readme = aiResult.readme.code;
+}
+
+function generateIntegrationBasic(repos: RepoSummary[]): IntegrationResult {
   const hasMultipleServices = repos.length > 1;
   const strategy = hasMultipleServices ? 'docker-compose' : 'monorepo';
 

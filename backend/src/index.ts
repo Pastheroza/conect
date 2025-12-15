@@ -131,7 +131,7 @@ app.post('/api/analyze', async (req, res) => {
 });
 
 // Match interfaces between frontend and backend
-app.post('/api/match', (req, res) => {
+app.post('/api/match', async (req, res) => {
   const summaries = Array.from(repos.values())
     .map(r => r.summary)
     .filter((s): s is RepoSummary => !!s);
@@ -140,7 +140,7 @@ app.post('/api/match', (req, res) => {
     return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
   }
   
-  const result = matchInterfaces(summaries);
+  const result = await matchInterfaces(summaries);
   res.json(result);
 });
 
@@ -154,13 +154,13 @@ app.post('/api/generate', async (req, res) => {
     return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
   }
   
-  const matchResult = matchInterfaces(summaries);
+  const matchResult = await matchInterfaces(summaries);
   const generated = await generateCode(summaries, matchResult);
   res.json(generated);
 });
 
 // Generate integration config (docker-compose, env, scripts)
-app.post('/api/integrate', (req, res) => {
+app.post('/api/integrate', async (req, res) => {
   const summaries = Array.from(repos.values())
     .map(r => r.summary)
     .filter((s): s is RepoSummary => !!s);
@@ -169,7 +169,7 @@ app.post('/api/integrate', (req, res) => {
     return res.status(400).json({ error: 'No analyzed repos. Run /api/analyze first.' });
   }
   
-  const result = generateIntegration(summaries);
+  const result = await generateIntegration(summaries);
   res.json(result);
 });
 
@@ -230,7 +230,7 @@ app.get('/api/run-all/stream', async (req, res) => {
 
     // Step 2: Match
     sendSSE(res, 'Matching frontend API calls to backend routes...', 'info');
-    const matchResult = matchInterfaces(summaries);
+    const matchResult = await matchInterfaces(summaries);
     
     if (matchResult.missingInBackend.length > 0) {
       sendSSE(res, `Warning: ${matchResult.missingInBackend.length} API calls have no matching backend endpoint`, 'warning');
@@ -249,7 +249,7 @@ app.get('/api/run-all/stream', async (req, res) => {
     // Step 4: Integrate
     sendSSE(res, 'Generating docker-compose configuration...', 'info');
     sendSSE(res, 'Creating environment files...', 'info');
-    const integration = generateIntegration(summaries);
+    const integration = await generateIntegration(summaries);
     sendSSE(res, `Integration strategy: ${integration.strategy}`, 'success');
 
     // Step 5: Validate
@@ -317,7 +317,7 @@ app.post('/api/run-all', async (req, res) => {
 
   // Step 2: Match
   log('Matching interfaces...');
-  const matchResult = matchInterfaces(summaries);
+  const matchResult = await matchInterfaces(summaries);
   log(`Found ${matchResult.missingInBackend.length} missing endpoints`);
 
   // Step 3: Generate
@@ -327,7 +327,7 @@ app.post('/api/run-all', async (req, res) => {
 
   // Step 4: Integrate
   log('Generating integration config...');
-  const integration = generateIntegration(summaries);
+  const integration = await generateIntegration(summaries);
   log(`Strategy: ${integration.strategy}`);
 
   // Step 5: Validate
@@ -405,11 +405,11 @@ app.post('/api/jobs', async (req, res) => {
 
     const summaries = repoList.map(r => r.summary).filter((s): s is RepoSummary => !!s);
     log('Matching interfaces...');
-    const matchResult = matchInterfaces(summaries);
+    const matchResult = await matchInterfaces(summaries);
     log('Generating code...');
     const generated = await generateCode(summaries, matchResult);
     log('Generating integration config...');
-    const integration = generateIntegration(summaries);
+    const integration = await generateIntegration(summaries);
     log('Validating integration...');
     const validation = await validateIntegration(summaries, '/tmp');
 
@@ -485,7 +485,7 @@ app.post('/api/apply', async (req, res) => {
     return res.status(500).json({ error: 'GITHUB_TOKEN not configured' });
   }
 
-  const matchResult = matchInterfaces(summaries);
+  const matchResult = await matchInterfaces(summaries);
   const generated = await generateCode(summaries, matchResult);
   const results: { repo: string; forkUrl: string; prUrl?: string; error?: string }[] = [];
 

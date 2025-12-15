@@ -1,20 +1,81 @@
-import Groq from 'groq-sdk';
 import { RepoSummary } from './repoAnalysis.js';
 import { MatchResult } from './interfaceMatching.js';
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+import { loadPrompt, callGroqJson } from '../groq.js';
 
 export interface GeneratedCode {
   apiClient?: string;
   corsConfig?: string;
   missingEndpoints?: string;
   sharedTypes?: string;
+  adapters?: { filename: string; code: string }[];
 }
 
 export async function generateCode(
   repos: RepoSummary[],
   matchResult: MatchResult
 ): Promise<GeneratedCode> {
+  // If no GROQ_API_KEY, return basic templates
+  if (!process.env.GROQ_API_KEY) {
+    return generateBasicCode(repos, matchResult);
+  }
+
+  try {
+    return await generateCodeWithAI(repos, matchResult);
+  } catch (e) {
+    console.error('AI code generation failed, using basic templates:', e);
+    return generateBasicCode(repos, matchResult);
+  }
+}
+
+async function generateCodeWithAI(
+  repos: RepoSummary[],
+  matchResult: MatchResult
+): Promise<GeneratedCode> {
+  const prompt = await loadPrompt('generate', {
+    repoSummaries: JSON.stringify(repos.map(r => ({
+      url: r.url,
+      purpose: r.purpose,
+      type: r.type,
+      framework: r.framework,
+      language: r.language,
+      apiRoutes: r.apiRoutes,
+      apiCalls: r.apiCalls,
+      dataModels: r.dataModels,
+    })), null, 2),
+    matchResults: JSON.stringify({
+      matched: matchResult.matched,
+      missingInBackend: matchResult.missingInBackend,
+      unusedInBackend: matchResult.unusedInBackend,
+      integrationStrategy: matchResult.integrationStrategy,
+      mismatches: matchResult.mismatches,
+      sharedDataModels: matchResult.sharedDataModels,
+    }, null, 2),
+  });
+
+  interface AIGeneratedCode {
+    apiClient?: { filename: string; code: string };
+    corsConfig?: { filename: string; code: string };
+    adapters?: { filename: string; code: string }[];
+    missingEndpoints?: { filename: string; code: string }[];
+    sharedTypes?: { filename: string; code: string };
+  }
+
+  const aiResult = await callGroqJson<AIGeneratedCode>(prompt, 8192);
+
+  const result: GeneratedCode = {};
+  
+  if (aiResult.apiClient?.code) result.apiClient = aiResult.apiClient.code;
+  if (aiResult.corsConfig?.code) result.corsConfig = aiResult.corsConfig.code;
+  if (aiResult.sharedTypes?.code) result.sharedTypes = aiResult.sharedTypes.code;
+  if (aiResult.adapters) result.adapters = aiResult.adapters;
+  if (aiResult.missingEndpoints?.length) {
+    result.missingEndpoints = aiResult.missingEndpoints.map(e => e.code).join('\n\n');
+  }
+
+  return result;
+}
+
+function generateBasicCode(repos: RepoSummary[], matchResult: MatchResult): GeneratedCode {
   const result: GeneratedCode = {};
 
   const frontendRepo = repos.find(r => 
@@ -24,101 +85,84 @@ export async function generateCode(
     r.framework === 'express' || r.framework === 'fastapi' || r.framework === 'flask'
   );
 
-  // Generate API client for frontend
-  if (frontendRepo && backendRepo) {
-    result.apiClient = await generateApiClient(backendRepo);
+  // Generate basic API client
+  if (frontendRepo && backendRepo && backendRepo.apiRoutes.length > 0) {
+    const routes = backendRepo.apiRoutes.slice(0, 10);
+    result.apiClient = `// Auto-generated API client
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+
+${routes.map(route => {
+  const name = route.replace(/[^a-zA-Z]/g, '_').replace(/_+/g, '_');
+  return `export const fetch${name} = () => fetch(\`\${API_URL}${route}\`).then(r => r.json());`;
+}).join('\n')}
+`;
   }
 
-  // Generate CORS config for backend
+  // Generate CORS config
   if (backendRepo) {
     result.corsConfig = generateCorsConfig(backendRepo.framework);
   }
 
-  // Generate missing endpoints
+  // Generate missing endpoint stubs
   if (matchResult.missingInBackend.length > 0 && backendRepo) {
-    result.missingEndpoints = await generateMissingEndpoints(
-      matchResult.missingInBackend,
-      backendRepo.framework
-    );
+    result.missingEndpoints = generateEndpointStubs(matchResult.missingInBackend, backendRepo.framework);
   }
 
-  // Generate shared types
-  if (frontendRepo && backendRepo) {
-    result.sharedTypes = await generateSharedTypes(repos, matchResult);
+  // Generate basic shared types
+  if (backendRepo && backendRepo.apiRoutes.length > 0) {
+    result.sharedTypes = `// Auto-generated shared types
+${backendRepo.apiRoutes.slice(0, 5).map(route => {
+  const name = route.split('/').pop()?.replace(/[^a-zA-Z]/g, '') || 'Item';
+  return `export interface ${name.charAt(0).toUpperCase() + name.slice(1)} {\n  id: string;\n  // TODO: Add fields\n}`;
+}).join('\n\n')}
+`;
   }
 
   return result;
-}
-
-async function generateApiClient(backendRepo: RepoSummary): Promise<string> {
-  const routes = backendRepo.apiRoutes.slice(0, 20); // Limit for context
-  
-  const response = await groq.chat.completions.create({
-    model: 'llama-3.1-8b-instant',
-    messages: [{
-      role: 'user',
-      content: `Generate a minimal TypeScript API client for these endpoints: ${JSON.stringify(routes)}. 
-Use fetch. Export functions for each endpoint. Keep it under 50 lines. No comments.`
-    }],
-    max_tokens: 1000,
-  });
-
-  return response.choices[0]?.message?.content || '';
 }
 
 function generateCorsConfig(framework: string | null): string {
   if (framework === 'express') {
     return `// Add to your Express app
 import cors from 'cors';
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));`;
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));`;
   }
   if (framework === 'fastapi') {
     return `# Add to your FastAPI app
 from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])`;
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)`;
   }
   if (framework === 'flask') {
     return `# Add to your Flask app
 from flask_cors import CORS
-CORS(app, origins=["http://localhost:3000"], supports_credentials=True)`;
+CORS(app, origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")], supports_credentials=True)`;
   }
   return '';
 }
 
-async function generateMissingEndpoints(
-  missing: { method: string; path: string }[],
-  framework: string | null
-): Promise<string> {
-  const uniquePaths = [...new Set(missing.map(m => `${m.method} ${m.path}`))].slice(0, 10);
+function generateEndpointStubs(missing: { method: string; path: string }[], framework: string | null): string {
+  const unique = [...new Map(missing.map(m => [`${m.method}:${m.path}`, m])).values()].slice(0, 10);
   
-  const response = await groq.chat.completions.create({
-    model: 'llama-3.1-8b-instant',
-    messages: [{
-      role: 'user',
-      content: `Generate ${framework || 'express'} route handlers for these missing endpoints: ${uniquePaths.join(', ')}. 
-Return stub implementations. Keep it minimal, under 40 lines total. No comments.`
-    }],
-    max_tokens: 800,
-  });
-
-  return response.choices[0]?.message?.content || '';
-}
-
-async function generateSharedTypes(
-  repos: RepoSummary[],
-  matchResult: MatchResult
-): Promise<string> {
-  const allRoutes = repos.flatMap(r => r.apiRoutes).slice(0, 15);
-  
-  const response = await groq.chat.completions.create({
-    model: 'llama-3.1-8b-instant',
-    messages: [{
-      role: 'user',
-      content: `Generate TypeScript interfaces for API responses based on these routes: ${JSON.stringify(allRoutes)}.
-Infer types from route names. Keep it under 30 lines. No comments.`
-    }],
-    max_tokens: 600,
-  });
-
-  return response.choices[0]?.message?.content || '';
+  if (framework === 'express') {
+    return unique.map(m => 
+      `app.${m.method.toLowerCase()}('${m.path}', (req, res) => {\n  // TODO: Implement\n  res.json({ message: 'Not implemented' });\n});`
+    ).join('\n\n');
+  }
+  if (framework === 'fastapi') {
+    return unique.map(m =>
+      `@app.${m.method.toLowerCase()}("${m.path}")\nasync def ${m.path.replace(/[^a-zA-Z]/g, '_')}():\n    # TODO: Implement\n    return {"message": "Not implemented"}`
+    ).join('\n\n');
+  }
+  if (framework === 'flask') {
+    return unique.map(m =>
+      `@app.route("${m.path}", methods=["${m.method}"])\ndef ${m.path.replace(/[^a-zA-Z]/g, '_')}():\n    # TODO: Implement\n    return jsonify({"message": "Not implemented"})`
+    ).join('\n\n');
+  }
+  return '';
 }
