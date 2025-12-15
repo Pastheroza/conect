@@ -18,6 +18,12 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Request logging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
+
 // In-memory storage
 interface StoredRepo {
   id: string;
