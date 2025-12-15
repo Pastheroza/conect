@@ -116,6 +116,9 @@ TESTS_FAILED=0
 # Track repos added for cleanup
 ADDED_REPO_IDS=()
 
+# Last response body for extracting data
+LAST_RESPONSE=""
+
 # Cleanup function
 cleanup() {
     if [ ${#ADDED_REPO_IDS[@]} -gt 0 ]; then
@@ -199,6 +202,7 @@ run_post_test() {
         -H "Content-Type: application/json" -d "$data")
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
+    LAST_RESPONSE="$body"
     
     if [ "$VERBOSE" = true ]; then
         echo -e "${GRAY}$body${RESET}"
@@ -220,8 +224,6 @@ run_post_test() {
     if [ "$passed" = true ]; then
         echo -e "${GREEN}✓ PASSED${RESET}"
         TESTS_PASSED=$((TESTS_PASSED + 1))
-        # Return body for further processing
-        echo "$body"
     else
         echo -e "${RED}✗ FAILED ($fail_reason)${RESET}"
         TESTS_FAILED=$((TESTS_FAILED + 1))
@@ -321,17 +323,17 @@ main() {
     run_test "List Repos (empty)" "/api/repos" 200 "repos"
     
     # Add first repo
-    local add_response=$(run_post_test "Add Repo (React)" "/api/repos" \
-        '{"url":"https://github.com/bradtraversy/react-crash-2024"}' 200 "id")
-    local repo1_id=$(echo "$add_response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+    run_post_test "Add Repo (React)" "/api/repos" \
+        '{"url":"https://github.com/bradtraversy/react-crash-2024"}' 200 "id"
+    local repo1_id=$(echo "$LAST_RESPONSE" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
     if [ -n "$repo1_id" ]; then
         ADDED_REPO_IDS+=("$repo1_id")
     fi
     
     # Add second repo
-    add_response=$(run_post_test "Add Repo (Express)" "/api/repos" \
-        '{"url":"https://github.com/bradtraversy/express-crash"}' 200 "id")
-    local repo2_id=$(echo "$add_response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+    run_post_test "Add Repo (Express)" "/api/repos" \
+        '{"url":"https://github.com/bradtraversy/express-crash"}' 200 "id"
+    local repo2_id=$(echo "$LAST_RESPONSE" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
     if [ -n "$repo2_id" ]; then
         ADDED_REPO_IDS+=("$repo2_id")
     fi
