@@ -33,6 +33,18 @@ interface StoredRepo {
 }
 const repos: Map<string, StoredRepo> = new Map();
 
+// Job storage for async API
+interface Job {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  result?: any;
+  error?: string;
+  logs: { message: string; type: string; timestamp: string }[];
+}
+const jobs: Map<string, Job> = new Map();
+
 // SSE helper
 function sendSSE(res: Response, message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') {
   const data = JSON.stringify({ message, type, timestamp: new Date().toISOString() });
@@ -345,7 +357,88 @@ app.post('/api/run-all', async (req, res) => {
 // Reset all
 app.post('/api/reset', (req, res) => {
   repos.clear();
+  jobs.clear();
   res.json({ success: true });
+});
+
+// Start async job for full pipeline
+app.post('/api/jobs', async (req, res) => {
+  const repoList = Array.from(repos.values());
+  if (repoList.length === 0) {
+    return res.status(400).json({ error: 'No repos added. Add repos first.' });
+  }
+
+  const jobId = `job-${Date.now()}`;
+  const job: Job = {
+    id: jobId,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    logs: [],
+  };
+  jobs.set(jobId, job);
+
+  // Return immediately
+  res.json({ jobId, status: 'pending' });
+
+  // Run pipeline in background
+  job.status = 'running';
+  const log = (message: string, type: string = 'info') => {
+    job.logs.push({ message, type, timestamp: new Date().toISOString() });
+  };
+
+  try {
+    const startTime = Date.now();
+    log('Starting repo analysis...');
+
+    for (const repo of repoList) {
+      const tempDir = await mkdtemp(join(tmpdir(), 'conect-'));
+      try {
+        await cloneRepo(repo.url, tempDir);
+        repo.summary = await analyzeRepo(tempDir, repo.url);
+        log(`Analyzed: ${repo.url}`, 'success');
+      } catch (e: any) {
+        log(`Failed: ${repo.url} - ${e.message}`, 'error');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    }
+
+    const summaries = repoList.map(r => r.summary).filter((s): s is RepoSummary => !!s);
+    log('Matching interfaces...');
+    const matchResult = matchInterfaces(summaries);
+    log('Generating code...');
+    const generated = await generateCode(summaries, matchResult);
+    log('Generating integration config...');
+    const integration = generateIntegration(summaries);
+    log('Validating integration...');
+    const validation = await validateIntegration(summaries, '/tmp');
+
+    const totalDuration = Date.now() - startTime;
+    const metrics = calculateMetrics(summaries, matchResult, generated, integration, validation, totalDuration);
+
+    job.status = 'completed';
+    job.completedAt = new Date().toISOString();
+    job.result = { analysis: summaries, matching: matchResult, generated, integration, validation, metrics };
+    log(`Pipeline complete in ${totalDuration}ms`, 'success');
+  } catch (e: any) {
+    job.status = 'failed';
+    job.error = e.message;
+    job.completedAt = new Date().toISOString();
+  }
+});
+
+// Get job status
+app.get('/api/jobs/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  res.json(job);
+});
+
+// List all jobs
+app.get('/api/jobs', (req, res) => {
+  res.json({ jobs: Array.from(jobs.values()).map(j => ({ id: j.id, status: j.status, createdAt: j.createdAt })) });
 });
 
 // Get git history for all repos

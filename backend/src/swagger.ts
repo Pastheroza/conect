@@ -153,6 +153,35 @@ export const swaggerSpec = {
         },
       },
     },
+    '/api/jobs': {
+      post: {
+        summary: 'Start async pipeline job',
+        description: 'Starts the full pipeline asynchronously and returns a job ID immediately',
+        tags: ['Jobs'],
+        responses: {
+          200: { description: 'Job started', content: { 'application/json': { schema: { $ref: '#/components/schemas/JobCreated' } } } },
+          400: { description: 'No repos added', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+      get: {
+        summary: 'List all jobs',
+        tags: ['Jobs'],
+        responses: {
+          200: { description: 'List of jobs', content: { 'application/json': { schema: { $ref: '#/components/schemas/JobList' } } } },
+        },
+      },
+    },
+    '/api/jobs/{id}': {
+      get: {
+        summary: 'Get job status and result',
+        tags: ['Jobs'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Job details', content: { 'application/json': { schema: { $ref: '#/components/schemas/Job' } } } },
+          404: { description: 'Job not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
     '/api/history': {
       get: {
         summary: 'Get git commit history',
@@ -317,6 +346,41 @@ export const swaggerSpec = {
               },
             },
           },
+        },
+      },
+      JobCreated: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string' },
+          status: { type: 'string', enum: ['pending'] },
+        },
+      },
+      JobList: {
+        type: 'object',
+        properties: {
+          jobs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                status: { type: 'string', enum: ['pending', 'running', 'completed', 'failed'] },
+                createdAt: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      Job: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'running', 'completed', 'failed'] },
+          createdAt: { type: 'string' },
+          completedAt: { type: 'string' },
+          result: { $ref: '#/components/schemas/RunAllResponse' },
+          error: { type: 'string' },
+          logs: { type: 'array', items: { $ref: '#/components/schemas/SSEMessage' } },
         },
       },
     },

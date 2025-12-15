@@ -32,6 +32,9 @@ API supports CORS from any origin. No special headers required.
 | POST | `/api/run-all` | Full pipeline (JSON) |
 | GET | `/api/run-all/stream` | Full pipeline (SSE) |
 | POST | `/api/reset` | Reset all data |
+| POST | `/api/jobs` | Start async job |
+| GET | `/api/jobs` | List jobs |
+| GET | `/api/jobs/:id` | Get job status |
 | GET | `/api/history` | Git commit history |
 | POST | `/api/apply` | Fork repos + create PRs |
 
@@ -410,7 +413,7 @@ eventSource.onerror = () => eventSource.close();
 POST /api/reset
 ```
 
-Clears all repositories and analysis data.
+Clears all repositories, jobs, and analysis data.
 
 **Response** `200 OK`
 ```json
@@ -418,6 +421,96 @@ Clears all repositories and analysis data.
   "success": true
 }
 ```
+
+---
+
+### Jobs (Async API)
+
+Alternative to SSE streaming - start pipeline as background job and poll for status.
+
+#### Start Job
+
+```
+POST /api/jobs
+```
+
+Starts full pipeline asynchronously, returns immediately.
+
+**Response** `200 OK`
+```json
+{
+  "jobId": "job-1734220800000",
+  "status": "pending"
+}
+```
+
+**Error** `400 Bad Request`
+```json
+{
+  "error": "No repos added. Add repos first."
+}
+```
+
+#### Get Job Status
+
+```
+GET /api/jobs/:id
+```
+
+**Response** `200 OK` (running)
+```json
+{
+  "id": "job-1734220800000",
+  "status": "running",
+  "createdAt": "2025-12-14T22:00:00.000Z",
+  "logs": [
+    { "message": "Starting repo analysis...", "type": "info", "timestamp": "..." }
+  ]
+}
+```
+
+**Response** `200 OK` (completed)
+```json
+{
+  "id": "job-1734220800000",
+  "status": "completed",
+  "createdAt": "2025-12-14T22:00:00.000Z",
+  "completedAt": "2025-12-14T22:00:05.000Z",
+  "logs": [...],
+  "result": {
+    "analysis": [...],
+    "matching": {...},
+    "generated": {...},
+    "integration": {...},
+    "validation": {...},
+    "metrics": {...}
+  }
+}
+```
+
+**Error** `404 Not Found`
+```json
+{
+  "error": "Job not found"
+}
+```
+
+#### List Jobs
+
+```
+GET /api/jobs
+```
+
+**Response** `200 OK`
+```json
+{
+  "jobs": [
+    { "id": "job-1734220800000", "status": "completed", "createdAt": "..." }
+  ]
+}
+```
+
+---
 
 #### History
 
