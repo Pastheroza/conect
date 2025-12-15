@@ -39,3 +39,8 @@ export enum ActionType {
   VALIDATE = 'VALIDATE',
   RESET = 'RESET'
 }
+
+/**
+ * Status of an individual pipeline step.
+ */
+export type StepStatus = 'idle' | 'loading' | 'success' | 'error';

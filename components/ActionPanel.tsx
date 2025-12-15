@@ -1,14 +1,20 @@
 import React from 'react';
-import { ActionType } from '../types';
-import { Zap, Search, RotateCcw, Lock, CheckCircle2, FileCode2, Puzzle, ArrowRight } from 'lucide-react';
+import { ActionType, StepStatus } from '../types';
+import { Zap, Search, RotateCcw, Lock, Check, FileCode2, Puzzle, Loader2, AlertCircle } from 'lucide-react';
 
 interface ActionPanelProps {
   onAction: (type: ActionType) => void;
   isReady: boolean;
-  isProcessing?: boolean;
+  isProcessing: boolean;
+  pipelineStatus: Record<string, StepStatus>;
 }
 
-export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady, isProcessing = false }) => {
+export const ActionPanel: React.FC<ActionPanelProps> = ({ 
+  onAction, 
+  isReady, 
+  isProcessing,
+  pipelineStatus 
+}) => {
   return (
     <div className="mb-8">
       {!isReady && (
@@ -48,37 +54,47 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady, isP
           <PipelineButton 
             icon={Search} 
             label="1. Analyze" 
+            loadingLabel="Analyzing..."
+            completedLabel="1. Analyzed"
             onClick={() => onAction(ActionType.ANALYZE)} 
             disabled={!isReady || isProcessing}
-            colorClass="text-blue-600"
+            status={pipelineStatus[ActionType.ANALYZE]}
           />
           <PipelineButton 
             icon={Puzzle} 
             label="2. Match" 
+            loadingLabel="Matching..."
+            completedLabel="2. Matched"
             onClick={() => onAction(ActionType.MATCH)} 
             disabled={!isReady || isProcessing}
-            colorClass="text-purple-600"
+            status={pipelineStatus[ActionType.MATCH]}
           />
           <PipelineButton 
             icon={FileCode2} 
             label="3. Generate" 
+            loadingLabel="Generating..."
+            completedLabel="3. Generated"
             onClick={() => onAction(ActionType.GENERATE)} 
             disabled={!isReady || isProcessing}
-            colorClass="text-indigo-600"
+            status={pipelineStatus[ActionType.GENERATE]}
           />
           <PipelineButton 
             icon={Zap} 
             label="4. Integrate" 
+            loadingLabel="Integrating..."
+            completedLabel="4. Integrated"
             onClick={() => onAction(ActionType.INTEGRATE)} 
             disabled={!isReady || isProcessing}
-            colorClass="text-amber-500"
+            status={pipelineStatus[ActionType.INTEGRATE]}
           />
            <PipelineButton 
-            icon={CheckCircle2} 
+            icon={Check} 
             label="5. Validate" 
+            loadingLabel="Validating..."
+            completedLabel="5. Validated"
             onClick={() => onAction(ActionType.VALIDATE)} 
             disabled={!isReady || isProcessing}
-            colorClass="text-emerald-600"
+            status={pipelineStatus[ActionType.VALIDATE]}
           />
         </div>
       </div>
@@ -102,18 +118,82 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({ onAction, isReady, isP
 interface PipelineButtonProps {
   icon: React.ElementType;
   label: string;
+  loadingLabel?: string;
+  completedLabel?: string;
   onClick: () => void;
   disabled: boolean;
-  colorClass: string;
+  status: StepStatus;
 }
 
-const PipelineButton: React.FC<PipelineButtonProps> = ({ icon: Icon, label, onClick, disabled, colorClass }) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    className="flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-gray-300 hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 transition-all gap-2 h-20"
-  >
-    <Icon className={`w-5 h-5 ${colorClass}`} />
-    <span className="text-[10px] font-bold text-gray-600 uppercase tracking-tight">{label}</span>
-  </button>
-);
+const PipelineButton: React.FC<PipelineButtonProps> = ({ 
+  icon: Icon, 
+  label, 
+  loadingLabel, 
+  completedLabel, 
+  onClick, 
+  disabled, 
+  status 
+}) => {
+  
+  // Dynamic styles based on status
+  const getStatusStyles = () => {
+    switch (status) {
+      case 'success':
+        return 'bg-emerald-50 border-emerald-500 shadow-emerald-100';
+      case 'error':
+        return 'bg-red-50 border-red-300 shadow-red-100';
+      case 'loading':
+        return 'bg-blue-50 border-blue-300 shadow-blue-100';
+      default:
+        return 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md';
+    }
+  };
+
+  const getIconColor = () => {
+    switch (status) {
+      case 'success': return 'text-emerald-600';
+      case 'error': return 'text-red-500';
+      case 'loading': return 'text-blue-500';
+      default: return 'text-gray-500';
+    }
+  };
+
+  const isCompleted = status === 'success';
+  const isLoading = status === 'loading';
+  const isError = status === 'error';
+
+  const getLabelText = () => {
+    if (isLoading) return loadingLabel || 'Processing...';
+    if (isCompleted) return completedLabel || 'Completed';
+    if (isError) return 'Failed';
+    return label;
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled && !isLoading} // Allow click if loading/success mainly for visual persistence
+      className={`
+        flex flex-col items-center justify-center p-3 
+        border rounded-lg shadow-sm 
+        active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 
+        transition-all duration-300 gap-2 h-20
+        ${getStatusStyles()}
+      `}
+    >
+      {isLoading ? (
+        <Loader2 className={`w-5 h-5 ${getIconColor()} animate-spin`} />
+      ) : isCompleted ? (
+        <Check className={`w-6 h-6 ${getIconColor()}`} />
+      ) : isError ? (
+        <AlertCircle className={`w-5 h-5 ${getIconColor()}`} />
+      ) : (
+        <Icon className={`w-5 h-5 ${getIconColor()}`} />
+      )}
+      
+      <span className={`text-[10px] font-bold uppercase tracking-tight text-center leading-tight ${getIconColor()}`}>
+        {getLabelText()}
+      </span>
+    </button>
+  );
+};

@@ -4,9 +4,8 @@ import { RepoInput } from './components/RepoInput';
 import { RepoList } from './components/RepoList';
 import { ActionPanel } from './components/ActionPanel';
 import { LogPanel } from './components/LogPanel';
-import { Repository, LogEntry, ActionType, User } from './types';
+import { Repository, LogEntry, ActionType, User, StepStatus } from './types';
 import { api } from './api';
-import { v4 as uuidv4 } from 'uuid';
 
 // Simple ID generator fallback
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -14,12 +13,20 @@ const generateId = () => Math.random().toString(36).substring(2, 9);
 const App: React.FC = () => {
   const [repos, setRepos] = useState<Repository[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(false);
   const [serverStatus, setServerStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const [user, setUser] = useState<User | null>(null);
   
-  // Track if a pipeline is running to disable buttons
+  // Track global processing state (for disabling everything)
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Track individual step status for visual feedback (Green buttons)
+  const [pipelineStatus, setPipelineStatus] = useState<Record<string, StepStatus>>({
+    [ActionType.ANALYZE]: 'idle',
+    [ActionType.MATCH]: 'idle',
+    [ActionType.GENERATE]: 'idle',
+    [ActionType.INTEGRATE]: 'idle',
+    [ActionType.VALIDATE]: 'idle',
+  });
 
   // Derived state to check requirements: Just need 2 or more repos
   const isReady = useMemo(() => repos.length >= 2, [repos]);
@@ -35,6 +42,14 @@ const App: React.FC = () => {
     setLogs((prev) => [...prev, newLog]);
   }, []);
 
+  // Update a specific step's status
+  const updateStepStatus = (type: ActionType, status: StepStatus) => {
+    setPipelineStatus((prev) => ({
+      ...prev,
+      [type]: status
+    }));
+  };
+
   // Initial Data Fetch
   useEffect(() => {
     const init = async () => {
@@ -49,7 +64,7 @@ const App: React.FC = () => {
         const data = await api.getRepos();
         if (data.repos) {
           const mappedRepos: Repository[] = data.repos.map((r: any) => ({
-            id: r.id || generateId(), // Ensure ID exists for React keys/deletes
+            id: r.id || generateId(),
             url: r.url,
             addedAt: r.addedAt ? new Date(r.addedAt) : new Date(),
             summary: r.summary
@@ -92,7 +107,15 @@ const App: React.FC = () => {
       return;
     }
 
-    setLoading(true);
+    // Reset pipeline statuses when new data is added, as previous analysis is now stale
+    setPipelineStatus({
+      [ActionType.ANALYZE]: 'idle',
+      [ActionType.MATCH]: 'idle',
+      [ActionType.GENERATE]: 'idle',
+      [ActionType.INTEGRATE]: 'idle',
+      [ActionType.VALIDATE]: 'idle',
+    });
+
     try {
       addLog(`Adding repository: ${url}...`, 'info');
       const data = await api.addRepo(url);
@@ -107,8 +130,6 @@ const App: React.FC = () => {
       addLog(`Repository added successfully.`, 'success');
     } catch (err: any) {
       addLog(`Failed to add repo: ${err.message}`, 'error');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -120,6 +141,15 @@ const App: React.FC = () => {
     const previousRepos = [...repos];
     setRepos((prev) => prev.filter((r) => r.id !== id));
     
+    // Reset pipeline on change
+    setPipelineStatus({
+      [ActionType.ANALYZE]: 'idle',
+      [ActionType.MATCH]: 'idle',
+      [ActionType.GENERATE]: 'idle',
+      [ActionType.INTEGRATE]: 'idle',
+      [ActionType.VALIDATE]: 'idle',
+    });
+
     try {
       await api.deleteRepo(id);
       addLog(`Repository removed: ${repoToRemove.url}`, 'info');
@@ -132,6 +162,15 @@ const App: React.FC = () => {
   // Specific Handler for SSE (Server-Sent Events)
   const handleRunAllStream = () => {
     setIsProcessing(true);
+    // Reset individual statuses for a fresh run
+    setPipelineStatus({
+      [ActionType.ANALYZE]: 'loading',
+      [ActionType.MATCH]: 'idle',
+      [ActionType.GENERATE]: 'idle',
+      [ActionType.INTEGRATE]: 'idle',
+      [ActionType.VALIDATE]: 'idle',
+    });
+    
     addLog('Starting Auto-Pilot (Streaming)...', 'info');
     
     const eventSource = new EventSource(api.getRunAllStreamUrl());
@@ -139,7 +178,6 @@ const App: React.FC = () => {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        // Map API types to local log types
         let logType: LogEntry['type'] = 'info';
         if (data.type === 'success') logType = 'success';
         if (data.type === 'warning') logType = 'warning';
@@ -147,19 +185,26 @@ const App: React.FC = () => {
 
         addLog(data.message, logType);
       } catch (e) {
-        // Ignore parsing errors for pings/comments
+        // Ignore parsing errors
       }
     };
 
-    // Listen for the custom 'complete' event defined in API doc
     eventSource.addEventListener('complete', (event: MessageEvent) => {
       try {
         const result = JSON.parse(event.data);
         addLog('Auto-Pilot sequence completed successfully.', 'success');
-        
         if (result.metrics?.summary) {
           addLog(result.metrics.summary, 'success');
         }
+        
+        // Mark all steps as success on successful completion of auto-pilot
+        setPipelineStatus({
+          [ActionType.ANALYZE]: 'success',
+          [ActionType.MATCH]: 'success',
+          [ActionType.GENERATE]: 'success',
+          [ActionType.INTEGRATE]: 'success',
+          [ActionType.VALIDATE]: 'success',
+        });
       } catch (e) {
         addLog('Sequence complete but failed to parse final result.', 'warning');
       }
@@ -168,18 +213,11 @@ const App: React.FC = () => {
     });
 
     eventSource.onerror = () => {
-      // In production, you might want to retry, but for MVP we close
-      // Note: EventSource tries to reconnect automatically by default, 
-      // but if we get a fatal error or network down, we might want to stop.
-      // For now, let's close on error to prevent infinite error loops in UI
-      // if the server is actually down.
-      if (eventSource.readyState === EventSource.CLOSED) {
-         setIsProcessing(false);
-      } else {
+      if (eventSource.readyState !== EventSource.CLOSED) {
          addLog('Connection lost or completed. Closing stream.', 'warning');
          eventSource.close();
-         setIsProcessing(false);
       }
+      setIsProcessing(false);
     };
   };
 
@@ -190,14 +228,38 @@ const App: React.FC = () => {
       return;
     }
 
+    if (type === ActionType.RESET) {
+      if (window.confirm('Are you sure you want to reset all data? This will clear all repositories.')) {
+         addLog('Resetting project...', 'warning');
+         try {
+           await api.reset();
+           setRepos([]);
+           setPipelineStatus({
+             [ActionType.ANALYZE]: 'idle',
+             [ActionType.MATCH]: 'idle',
+             [ActionType.GENERATE]: 'idle',
+             [ActionType.INTEGRATE]: 'idle',
+             [ActionType.VALIDATE]: 'idle',
+           });
+           addLog('Project reset successfully.', 'success');
+         } catch(e: any) {
+           addLog(`Reset failed: ${e.message}`, 'error');
+         }
+      }
+      return;
+    }
+
     // Manual Actions
     setIsProcessing(true);
+    updateStepStatus(type, 'loading');
+
     try {
       switch (type) {
         case ActionType.ANALYZE:
           addLog('Running Analysis...', 'info');
           const resAnalyze = await api.analyze();
           addLog(`Analysis: Processed ${resAnalyze.results?.length || 0} repositories.`, 'success');
+          updateStepStatus(type, 'success');
           break;
 
         case ActionType.MATCH:
@@ -207,18 +269,21 @@ const App: React.FC = () => {
           if (resMatch.missingInBackend?.length > 0) {
              addLog(`Warning: ${resMatch.missingInBackend.length} endpoints missing in backend.`, 'warning');
           }
+          updateStepStatus(type, 'success');
           break;
 
         case ActionType.GENERATE:
           addLog('Generating Glue Code...', 'info');
-          const resGen = await api.generate();
+          await api.generate();
           addLog('Generate: Client SDK and Type definitions created.', 'success');
+          updateStepStatus(type, 'success');
           break;
         
         case ActionType.INTEGRATE:
           addLog('Generating Docker Configuration...', 'info');
           const resInt = await api.integrate();
           addLog(`Integrate: Strategy '${resInt.strategy}' applied.`, 'success');
+          updateStepStatus(type, 'success');
           break;
 
         case ActionType.VALIDATE:
@@ -226,27 +291,19 @@ const App: React.FC = () => {
           const resVal = await api.validate();
           if (resVal.success) {
             addLog('Validation: Integration is healthy.', 'success');
+            updateStepStatus(type, 'success');
           } else {
             addLog(`Validation: Found issues.`, 'warning');
             resVal.fixes?.forEach((f: string) => addLog(`Fix: ${f}`, 'info'));
-          }
-          break;
-        
-        case ActionType.RESET:
-          if (window.confirm('Are you sure you want to reset all data? This will clear all repositories.')) {
-             addLog('Resetting project...', 'warning');
-             await api.reset();
-             setRepos([]);
-             addLog('Project reset successfully.', 'success');
+            updateStepStatus(type, 'error'); // Mark as error if validation fails
           }
           break;
       }
     } catch (err: any) {
       addLog(`Operation failed: ${err.message}`, 'error');
+      updateStepStatus(type, 'error');
     } finally {
-      if (type !== ActionType.RESET) {
-        setIsProcessing(false);
-      }
+      setIsProcessing(false);
     }
   };
 
@@ -254,7 +311,6 @@ const App: React.FC = () => {
     <div className="min-h-screen p-6 md:p-12">
       <div className="max-w-4xl mx-auto">
         
-        {/* 1. Header with Status & Auth */}
         <Header 
           serverStatus={serverStatus} 
           user={user}
@@ -262,23 +318,19 @@ const App: React.FC = () => {
           onLogout={handleLogout}
         />
 
-        {/* 2. Input Section */}
         <RepoInput onAddRepo={handleAddRepo} />
 
-        {/* 3. Repository List */}
         <RepoList repos={repos} onRemoveRepo={handleRemoveRepo} />
 
-        {/* 4. Actions */}
         <ActionPanel 
           onAction={handleAction} 
           isReady={isReady} 
           isProcessing={isProcessing}
+          pipelineStatus={pipelineStatus}
         />
 
-        {/* 5. Output Logs */}
         <LogPanel logs={logs} />
         
-        {/* Footer */}
         <footer className="mt-12 text-center text-gray-400 text-xs">
           <p>&copy; {new Date().getFullYear()} conect. Enterprise Build.</p>
         </footer>
