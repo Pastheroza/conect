@@ -112,7 +112,7 @@ export const api = {
   },
 
   /**
-   * Run Full Pipeline (JSON)
+   * Run Full Pipeline (Synchronous JSON)
    */
   runAll: async () => {
     const res = await fetch(`${BASE_URL}/api/run-all`, {
@@ -122,10 +122,29 @@ export const api = {
   },
 
   /**
-   * Get SSE Endpoint URL for Run All Stream
+   * Start Async Job
    */
-  getRunAllStreamUrl: () => {
-    return `${BASE_URL}/api/run-all/stream`;
+  startJob: async () => {
+    const res = await fetch(`${BASE_URL}/api/jobs`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  /**
+   * Get Job Status
+   */
+  getJob: async (id: string) => {
+    const res = await fetch(`${BASE_URL}/api/jobs/${id}`);
+    return handleResponse(res);
+  },
+
+  /**
+   * List Jobs
+   */
+  getJobs: async () => {
+    const res = await fetch(`${BASE_URL}/api/jobs`);
+    return handleResponse(res);
   },
 
   /**
@@ -135,6 +154,14 @@ export const api = {
     const res = await fetch(`${BASE_URL}/api/reset`, {
       method: 'POST',
     });
+    return handleResponse(res);
+  },
+
+  /**
+   * Get Git Commit History
+   */
+  getHistory: async () => {
+    const res = await fetch(`${BASE_URL}/api/history`);
     return handleResponse(res);
   }
 };

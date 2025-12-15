@@ -29,6 +29,9 @@ const App: React.FC = () => {
     [ActionType.APPLY]: 'idle',
   });
 
+  // Track specific error messages for each step
+  const [stepErrors, setStepErrors] = useState<Record<string, string | null>>({});
+
   // Derived state to check requirements: Just need 2 or more repos
   const isReady = useMemo(() => repos.length >= 2, [repos]);
 
@@ -111,7 +114,7 @@ const App: React.FC = () => {
     // Clear logs to start fresh for this new workflow
     setLogs([]);
 
-    // Reset pipeline statuses when new data is added, as previous analysis is now stale
+    // Reset pipeline statuses and errors
     setPipelineStatus({
       [ActionType.ANALYZE]: 'idle',
       [ActionType.MATCH]: 'idle',
@@ -120,6 +123,7 @@ const App: React.FC = () => {
       [ActionType.VALIDATE]: 'idle',
       [ActionType.APPLY]: 'idle',
     });
+    setStepErrors({});
 
     try {
       addLog(`Adding repository: ${url}...`, 'info');
@@ -155,6 +159,7 @@ const App: React.FC = () => {
       [ActionType.VALIDATE]: 'idle',
       [ActionType.APPLY]: 'idle',
     });
+    setStepErrors({});
 
     try {
       await api.deleteRepo(id);
@@ -165,8 +170,8 @@ const App: React.FC = () => {
     }
   };
 
-  // Specific Handler for SSE (Server-Sent Events)
-  const handleRunAllStream = () => {
+  // Async Job Polling Handler (Replaces SSE)
+  const handleRunAllJob = async () => {
     setIsProcessing(true);
     // Reset individual statuses for a fresh run
     setPipelineStatus({
@@ -177,62 +182,73 @@ const App: React.FC = () => {
       [ActionType.VALIDATE]: 'idle',
       [ActionType.APPLY]: 'idle',
     });
+    setStepErrors({});
     
-    addLog('Starting Auto-Pilot (Streaming)...', 'info');
-    
-    const eventSource = new EventSource(api.getRunAllStreamUrl());
+    addLog('Starting Auto-Pilot (Job Mode)...', 'info');
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        let logType: LogEntry['type'] = 'info';
-        if (data.type === 'success') logType = 'success';
-        if (data.type === 'warning') logType = 'warning';
-        if (data.type === 'error') logType = 'error';
+    try {
+      // 1. Start Job
+      const { jobId } = await api.startJob();
+      addLog(`Job started: ${jobId}`, 'info');
 
-        addLog(data.message, logType);
-      } catch (e) {
-        // Ignore parsing errors
-      }
-    };
+      // 2. Poll Logic
+      let lastLogIndex = 0;
+      
+      const pollInterval = setInterval(async () => {
+        try {
+          const job = await api.getJob(jobId);
+          
+          // Show new logs
+          if (job.logs && job.logs.length > lastLogIndex) {
+            const newLogs = job.logs.slice(lastLogIndex);
+            newLogs.forEach(log => {
+              addLog(log.message, log.type);
+            });
+            lastLogIndex = job.logs.length;
+          }
 
-    eventSource.addEventListener('complete', (event: MessageEvent) => {
-      try {
-        const result = JSON.parse(event.data);
-        addLog('Auto-Pilot sequence completed successfully.', 'success');
-        if (result.metrics?.summary) {
-          addLog(result.metrics.summary, 'success');
+          // Check Status
+          if (job.status === 'completed' || job.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsProcessing(false);
+
+            if (job.status === 'completed') {
+              addLog('Auto-Pilot sequence completed successfully.', 'success');
+              if (job.result?.metrics?.summary) {
+                addLog(job.result.metrics.summary, 'success');
+              }
+              // Mark all steps as success
+              setPipelineStatus({
+                [ActionType.ANALYZE]: 'success',
+                [ActionType.MATCH]: 'success',
+                [ActionType.GENERATE]: 'success',
+                [ActionType.INTEGRATE]: 'success',
+                [ActionType.VALIDATE]: 'success',
+                [ActionType.APPLY]: 'idle',
+              });
+            } else {
+              addLog(`Job failed: ${job.error || 'Unknown error'}`, 'error');
+              setStepErrors(prev => ({ ...prev, [ActionType.RUN_ALL]: job.error || 'Auto-Pilot failed' }));
+              // We could mark all 'loading' steps as error here if we wanted strictly correct visual state
+            }
+          }
+        } catch (e: any) {
+          // Polling error (network glitch), don't stop unless critical or count threshold reached
+          console.error("Polling error", e);
         }
-        
-        // Mark all steps as success on successful completion of auto-pilot
-        setPipelineStatus({
-          [ActionType.ANALYZE]: 'success',
-          [ActionType.MATCH]: 'success',
-          [ActionType.GENERATE]: 'success',
-          [ActionType.INTEGRATE]: 'success',
-          [ActionType.VALIDATE]: 'success',
-          [ActionType.APPLY]: 'idle', // Apply is usually a manual final step
-        });
-      } catch (e) {
-        addLog('Sequence complete but failed to parse final result.', 'warning');
-      }
-      eventSource.close();
-      setIsProcessing(false);
-    });
+      }, 1000); // Poll every second
 
-    eventSource.onerror = () => {
-      if (eventSource.readyState !== EventSource.CLOSED) {
-         addLog('Connection lost or completed. Closing stream.', 'warning');
-         eventSource.close();
-      }
+    } catch (err: any) {
+      addLog(`Failed to start job: ${err.message}`, 'error');
       setIsProcessing(false);
-    };
+      setStepErrors(prev => ({ ...prev, [ActionType.RUN_ALL]: err.message }));
+    }
   };
 
   // Handler: Action Buttons
   const handleAction = async (type: ActionType) => {
     if (type === ActionType.RUN_ALL) {
-      handleRunAllStream();
+      handleRunAllJob();
       return;
     }
 
@@ -250,6 +266,7 @@ const App: React.FC = () => {
              [ActionType.VALIDATE]: 'idle',
              [ActionType.APPLY]: 'idle',
            });
+           setStepErrors({});
            
            // Clear logs for a completely fresh start, then show success
            setLogs([]);
@@ -264,6 +281,9 @@ const App: React.FC = () => {
     // Manual Actions
     setIsProcessing(true);
     updateStepStatus(type, 'loading');
+    
+    // Clear previous error for this step
+    setStepErrors(prev => ({ ...prev, [type]: null }));
 
     try {
       switch (type) {
@@ -301,13 +321,22 @@ const App: React.FC = () => {
         case ActionType.VALIDATE:
           addLog('Validating Integration...', 'info');
           const resVal = await api.validate();
+          
           if (resVal.success) {
             addLog('Validation: Integration is healthy.', 'success');
+            if (resVal.report?.summary) {
+              addLog(`Report: ${resVal.report.summary}`, 'success');
+            }
             updateStepStatus(type, 'success');
           } else {
             addLog(`Validation: Found issues.`, 'warning');
+            if (resVal.report?.summary) {
+              addLog(`Report: ${resVal.report.summary}`, 'warning');
+            }
             resVal.fixes?.forEach((f: string) => addLog(`Fix: ${f}`, 'info'));
             updateStepStatus(type, 'error');
+            // For validate, we might want to store reasons even if not thrown
+             setStepErrors(prev => ({ ...prev, [type]: "Validation failed. Check logs." }));
           }
           break;
         
@@ -330,6 +359,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       addLog(`Operation failed: ${err.message}`, 'error');
       updateStepStatus(type, 'error');
+      setStepErrors(prev => ({ ...prev, [type]: err.message || "Unknown error occurred" }));
     } finally {
       setIsProcessing(false);
     }
@@ -355,6 +385,7 @@ const App: React.FC = () => {
           isReady={isReady} 
           isProcessing={isProcessing} 
           pipelineStatus={pipelineStatus}
+          stepErrors={stepErrors}
         />
 
         <LogPanel logs={logs} />

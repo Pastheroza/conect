@@ -7,19 +7,33 @@ interface ActionPanelProps {
   isReady: boolean;
   isProcessing: boolean;
   pipelineStatus: Record<string, StepStatus>;
+  stepErrors?: Record<string, string | null>;
 }
 
 export const ActionPanel: React.FC<ActionPanelProps> = ({ 
   onAction, 
   isReady, 
   isProcessing,
-  pipelineStatus 
+  pipelineStatus,
+  stepErrors = {}
 }) => {
   // Check if pipeline is mostly complete to unlock Apply
   const isValidationComplete = pipelineStatus[ActionType.VALIDATE] === 'success';
 
   return (
     <div className="mb-8">
+      {/* Custom Shake Animation */}
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+          20%, 40%, 60%, 80% { transform: translateX(4px); }
+        }
+        .animate-error-shake {
+          animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+      `}</style>
+
       {!isReady && (
         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800 text-xs font-medium">
           <Lock className="w-3 h-3" />
@@ -62,6 +76,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             onClick={() => onAction(ActionType.ANALYZE)} 
             disabled={!isReady || isProcessing}
             status={pipelineStatus[ActionType.ANALYZE]}
+            errorMessage={stepErrors[ActionType.ANALYZE]}
           />
           <PipelineButton 
             icon={Puzzle} 
@@ -71,6 +86,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             onClick={() => onAction(ActionType.MATCH)} 
             disabled={!isReady || isProcessing}
             status={pipelineStatus[ActionType.MATCH]}
+            errorMessage={stepErrors[ActionType.MATCH]}
           />
           <PipelineButton 
             icon={FileCode2} 
@@ -80,6 +96,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             onClick={() => onAction(ActionType.GENERATE)} 
             disabled={!isReady || isProcessing}
             status={pipelineStatus[ActionType.GENERATE]}
+            errorMessage={stepErrors[ActionType.GENERATE]}
           />
           <PipelineButton 
             icon={Zap} 
@@ -89,6 +106,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             onClick={() => onAction(ActionType.INTEGRATE)} 
             disabled={!isReady || isProcessing}
             status={pipelineStatus[ActionType.INTEGRATE]}
+            errorMessage={stepErrors[ActionType.INTEGRATE]}
           />
            <PipelineButton 
             icon={Check} 
@@ -98,6 +116,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             onClick={() => onAction(ActionType.VALIDATE)} 
             disabled={!isReady || isProcessing}
             status={pipelineStatus[ActionType.VALIDATE]}
+            errorMessage={stepErrors[ActionType.VALIDATE]}
           />
         </div>
       </div>
@@ -107,30 +126,39 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 pl-1">
           Deployment
         </h4>
-        <button
-          onClick={() => onAction(ActionType.APPLY)}
-          disabled={!isValidationComplete || isProcessing}
-          className={`
-            w-full flex items-center justify-center gap-3 p-4 rounded-xl border transition-all shadow-sm
-            ${isValidationComplete 
-              ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:shadow-md cursor-pointer' 
-              : 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed opacity-70'}
-          `}
-        >
-          {pipelineStatus[ActionType.APPLY] === 'loading' ? (
-             <Loader2 className="w-5 h-5 animate-spin" />
-          ) : pipelineStatus[ActionType.APPLY] === 'success' ? (
-             <Check className="w-5 h-5" />
-          ) : (
-             <GitPullRequest className="w-5 h-5" />
-          )}
-          
-          <span className="font-semibold text-sm">
-            {pipelineStatus[ActionType.APPLY] === 'loading' ? 'Creating Pull Requests...' : 
-             pipelineStatus[ActionType.APPLY] === 'success' ? 'PRs Created Successfully' : 
-             'Apply Changes & Create PRs'}
-          </span>
-        </button>
+        <div className={`${pipelineStatus[ActionType.APPLY] === 'error' ? 'animate-error-shake' : ''}`}>
+          <button
+            onClick={() => onAction(ActionType.APPLY)}
+            disabled={!isValidationComplete || isProcessing}
+            title={stepErrors[ActionType.APPLY] || 'Deploy changes'}
+            className={`
+              w-full flex items-center justify-center gap-3 p-4 rounded-xl border transition-all shadow-sm
+              ${pipelineStatus[ActionType.APPLY] === 'error' 
+                ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100' 
+                : isValidationComplete 
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:shadow-md cursor-pointer' 
+                  : 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed opacity-70'
+              }
+            `}
+          >
+            {pipelineStatus[ActionType.APPLY] === 'loading' ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : pipelineStatus[ActionType.APPLY] === 'success' ? (
+              <Check className="w-5 h-5" />
+            ) : pipelineStatus[ActionType.APPLY] === 'error' ? (
+              <AlertCircle className="w-5 h-5" />
+            ) : (
+              <GitPullRequest className="w-5 h-5" />
+            )}
+            
+            <span className="font-semibold text-sm">
+              {pipelineStatus[ActionType.APPLY] === 'loading' ? 'Creating Pull Requests...' : 
+              pipelineStatus[ActionType.APPLY] === 'success' ? 'PRs Created Successfully' : 
+              pipelineStatus[ActionType.APPLY] === 'error' ? 'Deployment Failed' :
+              'Apply Changes & Create PRs'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Danger Zone */}
@@ -157,6 +185,7 @@ interface PipelineButtonProps {
   onClick: () => void;
   disabled: boolean;
   status: StepStatus;
+  errorMessage?: string | null;
 }
 
 const PipelineButton: React.FC<PipelineButtonProps> = ({ 
@@ -166,7 +195,8 @@ const PipelineButton: React.FC<PipelineButtonProps> = ({
   completedLabel, 
   onClick, 
   disabled, 
-  status 
+  status,
+  errorMessage
 }) => {
   
   // Dynamic styles based on status
@@ -175,7 +205,8 @@ const PipelineButton: React.FC<PipelineButtonProps> = ({
       case 'success':
         return 'bg-emerald-50 border-emerald-500 shadow-emerald-100';
       case 'error':
-        return 'bg-red-50 border-red-300 shadow-red-100';
+        // Red background + shake animation class
+        return 'bg-red-50 border-red-400 shadow-red-100 animate-error-shake hover:bg-red-100';
       case 'loading':
         return 'bg-blue-50 border-blue-300 shadow-blue-100';
       default:
@@ -186,7 +217,7 @@ const PipelineButton: React.FC<PipelineButtonProps> = ({
   const getIconColor = () => {
     switch (status) {
       case 'success': return 'text-emerald-600';
-      case 'error': return 'text-red-500';
+      case 'error': return 'text-red-600';
       case 'loading': return 'text-blue-500';
       default: return 'text-gray-500';
     }
@@ -206,12 +237,14 @@ const PipelineButton: React.FC<PipelineButtonProps> = ({
   return (
     <button
       onClick={onClick}
-      disabled={disabled && !isLoading} // Allow click if loading/success mainly for visual persistence
+      // Allow clicking on error to retry, but disable if generic disabled prop is true AND not loading/error
+      disabled={disabled && !isLoading && !isError}
+      title={isError && errorMessage ? `Error: ${errorMessage}` : label}
       className={`
         flex flex-col items-center justify-center p-3 
         border rounded-lg shadow-sm 
         active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 
-        transition-all duration-300 gap-2 h-20
+        transition-all duration-300 gap-2 h-20 relative
         ${getStatusStyles()}
       `}
     >
